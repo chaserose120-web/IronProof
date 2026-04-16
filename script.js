@@ -1,3 +1,11 @@
+const authPanel = document.querySelector("#authPanel");
+const authForm = document.querySelector("#authForm");
+const authMessage = document.querySelector("#authMessage");
+const userMenu = document.querySelector("#userMenu");
+const userDisplay = document.querySelector("#userDisplay");
+const logoutButton = document.querySelector("#logoutButton");
+const workspace = document.querySelector(".workspace");
+const detailPanel = document.querySelector("#detail");
 const form = document.querySelector("#jobForm");
 const photoInput = document.querySelector("#photos");
 const photoPreview = document.querySelector("#photoPreview");
@@ -15,6 +23,8 @@ const supabaseClient =
     ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
     : null;
 
+let currentUser = null;
+let currentProfile = null;
 let jobs = [];
 let activeFilter = "All";
 let activeJobId = null;
@@ -23,7 +33,64 @@ let stagedPhotos = [];
 
 setDefaultDate();
 render();
-loadJobs();
+initializeAuth();
+
+authForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  if (!supabaseClient) {
+    showSupabaseSetupMessage();
+    return;
+  }
+
+  const action = event.submitter?.dataset.authAction || "login";
+  const formData = new FormData(authForm);
+  const email = getValue(formData, "authEmail");
+  const password = getValue(formData, "authPassword");
+  const displayName = getValue(formData, "displayName");
+
+  setAuthMessage(action === "signup" ? "Creating account..." : "Logging in...");
+
+  try {
+    if (action === "signup") {
+      const { error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: displayName,
+          },
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setAuthMessage("Account created. If email confirmation is enabled, check your inbox before logging in.");
+      return;
+    }
+
+    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      throw error;
+    }
+
+    authForm.reset();
+    setAuthMessage("");
+  } catch (error) {
+    setAuthMessage(error.message);
+  }
+});
+
+logoutButton.addEventListener("click", async () => {
+  if (!supabaseClient) {
+    return;
+  }
+
+  await supabaseClient.auth.signOut();
+});
 
 photoInput.addEventListener("change", async (event) => {
   stagedPhotos = await readPhotos([...event.target.files]);
@@ -35,6 +102,11 @@ form.addEventListener("submit", async (event) => {
 
   if (!supabaseClient) {
     showSupabaseSetupMessage();
+    return;
+  }
+
+  if (!currentUser) {
+    setAuthMessage("Log in before saving a job.");
     return;
   }
 
@@ -53,13 +125,16 @@ form.addEventListener("submit", async (event) => {
     cause: getValue(formData, "cause"),
     correction: getValue(formData, "correction"),
     parts: getValue(formData, "parts"),
+    updated_by: currentUser.id,
   };
 
   submitButton.disabled = true;
   submitButton.textContent = editingJobId ? "Updating..." : "Saving...";
 
   try {
-    const savedJob = editingJobId ? await updateJob(editingJobId, payload) : await createJob(payload);
+    const savedJob = editingJobId
+      ? await updateJob(editingJobId, payload)
+      : await createJob({ ...payload, created_by: currentUser.id });
     activeJobId = savedJob.id;
     await loadJobs();
     resetForm();
@@ -83,6 +158,99 @@ filterButtons.forEach((button) => {
   });
 });
 
+async function initializeAuth() {
+  if (!supabaseClient) {
+    setSignedOutState();
+    showSupabaseSetupMessage();
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    setAuthMessage(error.message);
+    setSignedOutState();
+    return;
+  }
+
+  await handleSession(data.session);
+
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    handleSession(session);
+  });
+}
+
+async function handleSession(session) {
+  currentUser = session?.user || null;
+
+  if (!currentUser) {
+    setSignedOutState();
+    return;
+  }
+
+  currentProfile = await loadProfile(currentUser);
+  setSignedInState();
+  await loadJobs();
+}
+
+function setSignedInState() {
+  authPanel.classList.add("hidden");
+  userMenu.classList.remove("hidden");
+  workspace.classList.remove("hidden");
+  detailPanel.classList.remove("hidden");
+  userDisplay.textContent = currentProfile?.display_name || currentUser.email;
+  setAuthMessage("");
+}
+
+function setSignedOutState() {
+  currentUser = null;
+  currentProfile = null;
+  jobs = [];
+  activeJobId = null;
+  editingJobId = null;
+  authPanel.classList.remove("hidden");
+  userMenu.classList.add("hidden");
+  workspace.classList.add("hidden");
+  detailPanel.classList.add("hidden");
+  resetForm();
+  render();
+}
+
+async function loadProfile(user) {
+  const { data, error } = await supabaseClient.from("profiles").select("*").eq("id", user.id).maybeSingle();
+
+  if (error) {
+    setAuthMessage(`Profile load failed: ${error.message}`);
+    return null;
+  }
+
+  if (data) {
+    return data;
+  }
+
+  return createProfile(user);
+}
+
+async function createProfile(user) {
+  const displayName = user.user_metadata?.display_name || user.email?.split("@")[0] || "IronProof user";
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .insert({
+      id: user.id,
+      display_name: displayName,
+      email: user.email,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    setAuthMessage(`Profile creation failed: ${error.message}`);
+    return null;
+  }
+
+  return data;
+}
+
 async function loadJobs() {
   if (!supabaseClient) {
     jobs = [];
@@ -92,14 +260,22 @@ async function loadJobs() {
     return;
   }
 
-  jobList.innerHTML = '<div class="empty-list">Loading jobs from Supabase...</div>';
+  if (!currentUser) {
+    jobs = [];
+    activeJobId = null;
+    render();
+    return;
+  }
+
+  jobList.innerHTML = '<div class="empty-list">Loading your jobs from Supabase...</div>';
 
   try {
     const { data, error } = await supabaseClient
       .from("jobs")
       .select(
-        "id,title,status,work_order,job_date,machine,serial,customer,meter,summary,complaint,cause,correction,parts,created_at",
+        "id,title,status,work_order,job_date,machine,serial,customer,meter,summary,complaint,cause,correction,parts,created_at,created_by,updated_by",
       )
+      .eq("created_by", currentUser.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -128,7 +304,13 @@ async function createJob(payload) {
 }
 
 async function updateJob(jobId, payload) {
-  const { data, error } = await supabaseClient.from("jobs").update(payload).eq("id", jobId).select().single();
+  const { data, error } = await supabaseClient
+    .from("jobs")
+    .update(payload)
+    .eq("id", jobId)
+    .eq("created_by", currentUser.id)
+    .select()
+    .single();
 
   if (error) {
     throw error;
@@ -138,7 +320,7 @@ async function updateJob(jobId, payload) {
 }
 
 async function deleteJobRecord(jobId) {
-  const { error } = await supabaseClient.from("jobs").delete().eq("id", jobId);
+  const { error } = await supabaseClient.from("jobs").delete().eq("id", jobId).eq("created_by", currentUser.id);
 
   if (error) {
     throw error;
@@ -162,6 +344,8 @@ function normalizeJob(job) {
     correction: job.correction || "",
     parts: job.parts || "",
     createdAt: job.created_at || "",
+    createdBy: job.created_by || "",
+    updatedBy: job.updated_by || "",
     photos: [],
   };
 }
@@ -450,9 +634,12 @@ function formatDate(dateValue) {
   });
 }
 
+function setAuthMessage(message) {
+  authMessage.textContent = message;
+}
+
 function showSupabaseSetupMessage() {
-  jobList.innerHTML =
-    '<div class="empty-list">Add SUPABASE_URL and SUPABASE_ANON_KEY in the project environment to load jobs.</div>';
+  setAuthMessage("Add SUPABASE_URL and SUPABASE_ANON_KEY in the project environment to use IronProof.");
 }
 
 function escapeHtml(value) {

@@ -90,6 +90,7 @@ a {
 .brand,
 .brand > span:last-child,
 .app-header nav,
+.user-menu,
 .quick-stats,
 .form-actions,
 .filter-row,
@@ -151,8 +152,39 @@ a {
   background: rgba(21, 19, 15, 0.08);
 }
 
+.user-menu {
+  align-items: center;
+  gap: 10px;
+}
+
+.user-menu span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.compact-button {
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.84rem;
+}
+
 .app-shell {
   padding: 64px 0;
+}
+
+.auth-panel {
+  margin-bottom: 24px;
+  padding: clamp(20px, 3.5vw, 34px);
+}
+
+.auth-form .form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.auth-message {
+  margin: 14px 0 0;
+  font-weight: 800;
 }
 
 .hero {
@@ -623,9 +655,15 @@ textarea:focus {
     overflow-x: auto;
   }
 
+  .user-menu {
+    justify-content: space-between;
+    width: 100%;
+  }
+
   .quick-stats,
   .form-grid,
   .form-grid.three,
+  .auth-form .form-grid,
   .detail-grid {
     grid-template-columns: 1fr;
   }
