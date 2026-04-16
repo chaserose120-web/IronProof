@@ -1,0 +1,10 @@
+{
+  "name": "ironproof",
+  "version": "1.0.0",
+  "private": true,
+  "description": "IronProof diesel mechanic job log static site.",
+  "scripts": {
+    "build": "mkdir -p dist && cp index.html styles.css script.js dist/",
+    "preview": "npx serve dist"
+  }
+}

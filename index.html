@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IronProof | Diesel Mechanic Job Log</title>
+    <meta
+      name="description"
+      content="A local photo and job documentation tracker for diesel mechanics at a Caterpillar dealer."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Manrope:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="texture"></div>
+    <header class="app-header">
+      <a class="brand" href="#top" aria-label="IronProof home">
+        <span class="brand-mark">IP</span>
+        <span>
+          <strong>IronProof</strong>
+          <small>Diesel mechanic job log</small>
+        </span>
+      </a>
+
+      <nav aria-label="Page navigation">
+        <a href="#new-job">New Job</a>
+        <a href="#jobs">Job Board</a>
+        <a href="#detail">Details</a>
+      </nav>
+    </header>
+
+    <main id="top" class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Built for Cat dealer service work</p>
+          <h1>Track every repair with photos, notes, and a clean job summary.</h1>
+          <p class="hero-copy">
+            Use this like a CompanyCam-style notebook for diesel mechanics:
+            document equipment, work orders, complaint, cause, correction,
+            parts, and photo proof from start to finish.
+          </p>
+        </div>
+
+        <aside class="quick-stats" aria-label="Current job statistics">
+          <div>
+            <span id="totalJobs">0</span>
+            <strong>Total jobs</strong>
+          </div>
+          <div>
+            <span id="openJobs">0</span>
+            <strong>Open jobs</strong>
+          </div>
+          <div>
+            <span id="photoCount">0</span>
+            <strong>Photos saved</strong>
+          </div>
+        </aside>
+      </section>
+
+      <section class="workspace">
+        <form class="job-form panel" id="jobForm">
+          <div class="panel-heading" id="new-job">
+            <p class="eyebrow">Add job</p>
+            <h2>New diesel job record</h2>
+            <p>
+              Fill in what you know now. You can update the job later as you
+              diagnose, repair, and close it out.
+            </p>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Job title
+              <input id="title" name="title" type="text" placeholder="Example: 336 hydraulic leak" required />
+            </label>
+
+            <label>
+              Status
+              <select id="status" name="status">
+                <option>Open</option>
+                <option>Diagnosing</option>
+                <option>Waiting on parts</option>
+                <option>Needs approval</option>
+                <option>Complete</option>
+              </select>
+            </label>
+
+            <label>
+              Work order
+              <input id="workOrder" name="workOrder" type="text" placeholder="WO-10482" />
+            </label>
+
+            <label>
+              Date
+              <input id="jobDate" name="jobDate" type="date" />
+            </label>
+
+            <label>
+              Machine / model
+              <input id="machine" name="machine" type="text" placeholder="Cat 980M Loader" />
+            </label>
+
+            <label>
+              Serial number
+              <input id="serial" name="serial" type="text" placeholder="CAT0980M..." />
+            </label>
+
+            <label>
+              Customer / location
+              <input id="customer" name="customer" type="text" placeholder="Customer, mine, shop, or yard" />
+            </label>
+
+            <label>
+              Hours / miles
+              <input id="meter" name="meter" type="text" placeholder="8,420 hrs" />
+            </label>
+          </div>
+
+          <label>
+            Brief job summary
+            <textarea
+              id="summary"
+              name="summary"
+              rows="3"
+              placeholder="Short overview of the job, what failed, or what the customer requested."
+              required
+            ></textarea>
+          </label>
+
+          <div class="form-grid three">
+            <label>
+              Complaint
+              <textarea id="complaint" name="complaint" rows="4" placeholder="What was reported?"></textarea>
+            </label>
+
+            <label>
+              Cause
+              <textarea id="cause" name="cause" rows="4" placeholder="What did you find?"></textarea>
+            </label>
+
+            <label>
+              Correction
+              <textarea id="correction" name="correction" rows="4" placeholder="What did you repair or recommend?"></textarea>
+            </label>
+          </div>
+
+          <label>
+            Parts, fluids, or special tools
+            <textarea
+              id="parts"
+              name="parts"
+              rows="3"
+              placeholder="Part numbers, fluids added, tooling used, measurements, pressures, codes, etc."
+            ></textarea>
+          </label>
+
+          <label class="photo-drop">
+            <input id="photos" name="photos" type="file" accept="image/*" multiple />
+            <span>Add job photos</span>
+            <small>Before, during, after, failed parts, codes, leaks, damage, or final repair proof.</small>
+          </label>
+
+          <div class="preview-grid" id="photoPreview" aria-live="polite"></div>
+
+          <div class="form-actions">
+            <button class="button primary" type="submit" id="submitButton">Save job</button>
+            <button class="button secondary" type="button" id="clearFormButton">Clear form</button>
+          </div>
+        </form>
+
+        <aside class="panel job-board" id="jobs">
+          <div class="panel-heading compact">
+            <p class="eyebrow">Job board</p>
+            <h2>Saved work</h2>
+          </div>
+
+          <label class="search-label">
+            Search jobs
+            <input id="searchInput" type="search" placeholder="Search title, serial, WO, customer..." />
+          </label>
+
+          <div class="filter-row" aria-label="Filter saved jobs">
+            <button class="filter-button active" type="button" data-filter="All">All</button>
+            <button class="filter-button" type="button" data-filter="Open">Open</button>
+            <button class="filter-button" type="button" data-filter="Waiting on parts">Parts</button>
+            <button class="filter-button" type="button" data-filter="Complete">Complete</button>
+          </div>
+
+          <div class="job-list" id="jobList" aria-live="polite"></div>
+        </aside>
+      </section>
+
+      <section class="panel detail-panel" id="detail">
+        <div class="empty-state" id="emptyDetail">
+          <p class="eyebrow">Job details</p>
+          <h2>Select a job to view the full record.</h2>
+          <p>
+            This area will show the mechanic notes, equipment information,
+            photos, and a copy-ready summary.
+          </p>
+        </div>
+
+        <article class="job-detail hidden" id="jobDetail"></article>
+      </section>
+    </main>
+
+    <template id="jobCardTemplate">
+      <button class="job-card" type="button">
+        <span class="status-pill"></span>
+        <strong></strong>
+        <small></small>
+        <p></p>
+      </button>
+    </template>
+
+    <script src="script.js"></script>
+  </body>
+</html>
