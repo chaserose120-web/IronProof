@@ -1,4 +1,3 @@
-const storageKey = "ironproof-diesel-jobs";
 const form = document.querySelector("#jobForm");
 const photoInput = document.querySelector("#photos");
 const photoPreview = document.querySelector("#photoPreview");
@@ -10,32 +9,41 @@ const emptyDetail = document.querySelector("#emptyDetail");
 const submitButton = document.querySelector("#submitButton");
 const clearFormButton = document.querySelector("#clearFormButton");
 
-let jobs = loadJobs();
+const supabaseConfig = window.IRONPROOF_SUPABASE || {};
+const supabaseClient =
+  window.supabase && supabaseConfig.url && supabaseConfig.anonKey
+    ? window.supabase.createClient(supabaseConfig.url, supabaseConfig.anonKey)
+    : null;
+
+let jobs = [];
 let activeFilter = "All";
-let activeJobId = jobs[0]?.id || null;
+let activeJobId = null;
 let editingJobId = null;
 let stagedPhotos = [];
 
 setDefaultDate();
 render();
+loadJobs();
 
 photoInput.addEventListener("change", async (event) => {
   stagedPhotos = await readPhotos([...event.target.files]);
   renderPhotoPreview(stagedPhotos);
 });
 
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
+  if (!supabaseClient) {
+    showSupabaseSetupMessage();
+    return;
+  }
+
   const formData = new FormData(form);
-  const job = {
-    id: editingJobId || createId(),
-    createdAt: editingJobId ? getJob(editingJobId).createdAt : new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+  const payload = {
     title: getValue(formData, "title"),
     status: getValue(formData, "status") || "Open",
-    workOrder: getValue(formData, "workOrder"),
-    jobDate: getValue(formData, "jobDate"),
+    work_order: getValue(formData, "workOrder"),
+    job_date: getValue(formData, "jobDate") || null,
     machine: getValue(formData, "machine"),
     serial: getValue(formData, "serial"),
     customer: getValue(formData, "customer"),
@@ -45,22 +53,22 @@ form.addEventListener("submit", (event) => {
     cause: getValue(formData, "cause"),
     correction: getValue(formData, "correction"),
     parts: getValue(formData, "parts"),
-    photos: editingJobId ? [...getJob(editingJobId).photos, ...stagedPhotos] : stagedPhotos,
   };
 
-  if (editingJobId) {
-    jobs = jobs.map((savedJob) => (savedJob.id === editingJobId ? job : savedJob));
-  } else {
-    jobs = [job, ...jobs];
-  }
+  submitButton.disabled = true;
+  submitButton.textContent = editingJobId ? "Updating..." : "Saving...";
 
-  activeJobId = job.id;
-  if (!saveJobs()) {
-    return;
+  try {
+    const savedJob = editingJobId ? await updateJob(editingJobId, payload) : await createJob(payload);
+    activeJobId = savedJob.id;
+    await loadJobs();
+    resetForm();
+  } catch (error) {
+    alert(`Supabase save failed: ${error.message}`);
+    submitButton.textContent = editingJobId ? "Update job" : "Save job";
+  } finally {
+    submitButton.disabled = false;
   }
-
-  resetForm();
-  render();
 });
 
 clearFormButton.addEventListener("click", resetForm);
@@ -75,56 +83,87 @@ filterButtons.forEach((button) => {
   });
 });
 
-function loadJobs() {
-  const savedJobs = localStorage.getItem(storageKey);
-
-  if (savedJobs) {
-    try {
-      return JSON.parse(savedJobs);
-    } catch {
-      localStorage.removeItem(storageKey);
-    }
+async function loadJobs() {
+  if (!supabaseClient) {
+    jobs = [];
+    activeJobId = null;
+    render();
+    showSupabaseSetupMessage();
+    return;
   }
 
-  return [
-    {
-      id: createId(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      title: "336 Excavator hydraulic leak",
-      status: "Diagnosing",
-      workOrder: "WO-10482",
-      jobDate: new Date().toISOString().slice(0, 10),
-      machine: "Cat 336 Excavator",
-      serial: "CAT0336EJHDK11234",
-      customer: "North Yard",
-      meter: "6,812 hrs",
-      summary: "Customer reported hydraulic oil leaking near the boom foot after loading trucks.",
-      complaint: "Hydraulic leak visible after machine warms up. Operator said boom drifted overnight.",
-      cause: "Initial inspection found wet oil trail near boom cylinder hose fitting. Needs pressure wash and recheck.",
-      correction: "Documented leak area, tagged machine, and requested hose quote before disassembly.",
-      parts: "Possible boom cylinder hose, hydraulic oil top-off, caps/plugs.",
-      photos: [],
-    },
-  ];
-}
+  jobList.innerHTML = '<div class="empty-list">Loading jobs from Supabase...</div>';
 
-function saveJobs() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify(jobs));
-    return true;
-  } catch {
-    alert("This browser is out of storage. Try removing a few photos from older jobs before saving more.");
-    return false;
+    const { data, error } = await supabaseClient
+      .from("jobs")
+      .select(
+        "id,title,status,work_order,job_date,machine,serial,customer,meter,summary,complaint,cause,correction,parts,created_at",
+      )
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      throw error;
+    }
+
+    jobs = data.map(normalizeJob);
+    activeJobId = activeJobId && getJob(activeJobId) ? activeJobId : jobs[0]?.id || null;
+    render();
+  } catch (error) {
+    jobs = [];
+    activeJobId = null;
+    render();
+    jobList.innerHTML = `<div class="empty-list">Could not load Supabase jobs: ${escapeHtml(error.message)}</div>`;
   }
 }
 
-function createId() {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
+async function createJob(payload) {
+  const { data, error } = await supabaseClient.from("jobs").insert(payload).select().single();
+
+  if (error) {
+    throw error;
   }
 
-  return `job-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return normalizeJob(data);
+}
+
+async function updateJob(jobId, payload) {
+  const { data, error } = await supabaseClient.from("jobs").update(payload).eq("id", jobId).select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeJob(data);
+}
+
+async function deleteJobRecord(jobId) {
+  const { error } = await supabaseClient.from("jobs").delete().eq("id", jobId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+function normalizeJob(job) {
+  return {
+    id: job.id,
+    title: job.title || "",
+    status: job.status || "Open",
+    workOrder: job.work_order || "",
+    jobDate: job.job_date || "",
+    machine: job.machine || "",
+    serial: job.serial || "",
+    customer: job.customer || "",
+    meter: job.meter || "",
+    summary: job.summary || "",
+    complaint: job.complaint || "",
+    cause: job.cause || "",
+    correction: job.correction || "",
+    parts: job.parts || "",
+    createdAt: job.created_at || "",
+    photos: [],
+  };
 }
 
 function render() {
@@ -136,7 +175,7 @@ function render() {
 function renderStats() {
   document.querySelector("#totalJobs").textContent = jobs.length;
   document.querySelector("#openJobs").textContent = jobs.filter((job) => job.status !== "Complete").length;
-  document.querySelector("#photoCount").textContent = jobs.reduce((count, job) => count + job.photos.length, 0);
+  document.querySelector("#photoCount").textContent = "0";
 }
 
 function renderJobList() {
@@ -228,13 +267,9 @@ function renderDetail() {
     </div>
 
     <div class="photo-section">
-      <h3>Photos (${job.photos.length})</h3>
+      <h3>Photos (0)</h3>
       <div class="photo-gallery">
-        ${
-          job.photos.length
-            ? job.photos.map((photo) => `<img src="${photo.data}" alt="${escapeHtml(photo.name)}" />`).join("")
-            : "<p>No photos saved on this job yet.</p>"
-        }
+        <p>Photo upload is not connected yet.</p>
       </div>
     </div>
 
@@ -273,28 +308,29 @@ function editJob(jobId) {
   document.querySelector("#new-job").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function deleteJob(jobId) {
+async function deleteJob(jobId) {
   const job = getJob(jobId);
-  const confirmed = confirm(`Delete "${job.title}"? This only removes it from this browser.`);
+  const confirmed = confirm(`Delete "${job.title}"? This removes it from Supabase.`);
 
   if (!confirmed) {
     return;
   }
 
-  jobs = jobs.filter((savedJob) => savedJob.id !== jobId);
-  activeJobId = jobs[0]?.id || null;
-  if (!saveJobs()) {
-    return;
+  try {
+    await deleteJobRecord(jobId);
+    activeJobId = jobs.find((savedJob) => savedJob.id !== jobId)?.id || null;
+    resetForm();
+    await loadJobs();
+  } catch (error) {
+    alert(`Supabase delete failed: ${error.message}`);
   }
-
-  resetForm();
-  render();
 }
 
 function resetForm() {
   form.reset();
   editingJobId = null;
   stagedPhotos = [];
+  submitButton.disabled = false;
   submitButton.textContent = "Save job";
   photoInput.value = "";
   renderPhotoPreview(stagedPhotos);
@@ -398,7 +434,7 @@ function buildReport(job) {
     "",
     `Parts / Fluids / Tooling: ${job.parts || "N/A"}`,
     "",
-    `Photos attached in IronProof: ${job.photos.length}`,
+    "Photos attached in IronProof: 0",
   ].join("\n");
 }
 
@@ -412,6 +448,11 @@ function formatDate(dateValue) {
     month: "short",
     day: "numeric",
   });
+}
+
+function showSupabaseSetupMessage() {
+  jobList.innerHTML =
+    '<div class="empty-list">Add SUPABASE_URL and SUPABASE_ANON_KEY in the project environment to load jobs.</div>';
 }
 
 function escapeHtml(value) {
