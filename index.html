@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IronProof | Diesel Mechanic Job Log</title>
+    <title>IronProofService | Technician Job Logger</title>
     <meta
       name="description"
-      content="A local photo and job documentation tracker for diesel mechanics at a Caterpillar dealer."
+      content="A local photo and job documentation tracker for heavy-duty and automotive technicians."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -107,17 +107,22 @@
         <form class="job-form panel" id="jobForm">
           <div class="panel-heading" id="new-job">
             <p class="eyebrow">Add job</p>
-            <h2>New diesel job record</h2>
+            <h2>New service job record</h2>
             <p>
-              Fill in what you know now. You can update the job later as you
-              diagnose, repair, and close it out.
+              Choose the workflow that fits the job, then document the customer,
+              unit, notes, photos, and final work record.
             </p>
+          </div>
+
+          <div class="form-section-title">
+            <span>Workflow</span>
+            <p>Select the job type before filling out unit-specific details.</p>
           </div>
 
           <div class="job-type-switch" aria-label="Job type">
             <label>
               <input type="radio" name="jobType" value="Heavy" checked />
-              Heavy
+              Heavy equipment
             </label>
             <label>
               <input type="radio" name="jobType" value="Automotive" />
@@ -125,10 +130,15 @@
             </label>
           </div>
 
+          <div class="form-section-title">
+            <span>Shared job details</span>
+            <p>These fields apply to both Heavy and Automotive work.</p>
+          </div>
+
           <div class="form-grid">
             <label>
               Job title
-              <input id="title" name="title" type="text" placeholder="Example: 336 hydraulic leak" required />
+              <input id="title" name="title" type="text" placeholder="Example: Hydraulic leak or brake concern" required />
             </label>
 
             <label>
@@ -153,6 +163,11 @@
             </label>
           </div>
 
+          <div class="form-section-title">
+            <span>Customer information</span>
+            <p>Use this for the person or company tied to the job.</p>
+          </div>
+
           <div class="form-grid three">
             <label>
               Customer name
@@ -171,9 +186,14 @@
           </div>
 
           <div class="job-type-fields" data-job-type-fields="Heavy">
+            <div class="form-section-title">
+              <span>Heavy equipment details</span>
+              <p>Machine identification, location, and hour meter information.</p>
+            </div>
+
             <div class="form-grid">
             <label>
-              Machine / model
+              Machine / equipment
               <input id="machine" name="machine" type="text" placeholder="Cat 980M Loader" />
             </label>
 
@@ -183,18 +203,23 @@
             </label>
 
             <label>
-              Customer / location
-              <input id="customer" name="customer" type="text" placeholder="Customer, mine, shop, or yard" />
+              Jobsite / location
+              <input id="customer" name="customer" type="text" placeholder="Mine, shop, yard, or jobsite" />
             </label>
 
             <label>
-              Hours / miles
+              Hours / meter
               <input id="meter" name="meter" type="text" placeholder="8,420 hrs" />
             </label>
             </div>
           </div>
 
           <div class="job-type-fields hidden" data-job-type-fields="Automotive">
+            <div class="form-section-title">
+              <span>Automotive vehicle details</span>
+              <p>Vehicle identification and mileage information.</p>
+            </div>
+
             <div class="form-grid">
               <label>
                 Year
@@ -223,18 +248,28 @@
             </div>
           </div>
 
+          <div class="form-section-title">
+            <span>Summary and notes</span>
+            <p>Capture the story of the job in a way you can trust later.</p>
+          </div>
+
           <label>
-            Brief job summary
+            Job summary / notes
             <textarea
               id="summary"
               name="summary"
               rows="3"
-              placeholder="Short overview of the job, what failed, or what the customer requested."
+              placeholder="Short overview of the job, request, failure, or work performed."
               required
             ></textarea>
           </label>
 
           <div class="job-type-fields" data-job-type-fields="Heavy">
+            <div class="form-section-title">
+              <span>Heavy diagnostic record</span>
+              <p>Use complaint, cause, and correction for equipment service documentation.</p>
+            </div>
+
             <div class="form-grid three">
               <label>
                 Complaint
@@ -254,6 +289,11 @@
           </div>
 
           <div class="job-type-fields hidden" data-job-type-fields="Automotive">
+            <div class="form-section-title">
+              <span>Automotive diagnostic record</span>
+              <p>Use concern, diagnosis, and repair performed for vehicle service documentation.</p>
+            </div>
+
             <div class="form-grid three">
               <label>
                 Customer concern
@@ -273,19 +313,24 @@
           </div>
 
           <label>
-            Parts, fluids, or special tools
+            Parts, fluids, tools, or recommendations
             <textarea
               id="parts"
               name="parts"
               rows="3"
-              placeholder="Part numbers, fluids added, tooling used, measurements, pressures, codes, etc."
+              placeholder="Part numbers, fluids added, tooling used, measurements, codes, recommendations, etc."
             ></textarea>
           </label>
+
+          <div class="form-section-title">
+            <span>Photos</span>
+            <p>Add proof photos for condition, diagnostics, failed parts, and completed work.</p>
+          </div>
 
           <label class="photo-drop">
             <input id="photos" name="photos" type="file" accept="image/*" multiple />
             <span>Add job photos</span>
-            <small>Before, during, after, failed parts, codes, leaks, damage, or final repair proof.</small>
+            <small>Before, during, after, failed parts, codes, leaks, damage, or final work proof.</small>
           </label>
 
           <div class="preview-grid" id="photoPreview" aria-live="polite"></div>

@@ -332,6 +332,25 @@ label {
   min-height: auto;
 }
 
+.form-section-title {
+  margin: 22px 0 12px;
+}
+
+.form-section-title span {
+  display: block;
+  color: var(--ink);
+  font-family: "Barlow Condensed", sans-serif;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.form-section-title p {
+  margin: 4px 0 0;
+  font-size: 0.88rem;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

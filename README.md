@@ -1,6 +1,6 @@
 # IronProof
 
-IronProof is a static diesel mechanic job log for documenting Caterpillar dealer service work. Email/password accounts, user profiles, per-user job records, and job photos are stored in Supabase.
+IronProofService is a technician job logger for heavy-duty equipment and automotive service work. Email/password accounts, user profiles, per-user job records, and job photos are stored in Supabase.
 
 ## Files
 
