@@ -11,6 +11,8 @@ const photoDrop = document.querySelector(".photo-drop");
 const photoInput = document.querySelector("#photos");
 const photoPreview = document.querySelector("#photoPreview");
 const photoStatus = document.querySelector("#photoStatus");
+const photoModal = document.querySelector("#photoModal");
+const photoModalImage = document.querySelector("#photoModalImage");
 const jobList = document.querySelector("#jobList");
 const searchInput = document.querySelector("#searchInput");
 const filterButtons = document.querySelectorAll(".filter-button");
@@ -93,6 +95,18 @@ logoutButton.addEventListener("click", async () => {
   }
 
   await supabaseClient.auth.signOut();
+});
+
+photoModal.addEventListener("click", (event) => {
+  if (event.target === photoModal) {
+    closePhotoModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !photoModal.classList.contains("hidden")) {
+    closePhotoModal();
+  }
 });
 
 photoDrop.addEventListener("click", () => {
@@ -653,9 +667,26 @@ function renderDetail() {
     output.select();
   });
   detail.querySelector("[data-action='delete']").addEventListener("click", () => deleteJob(job.id));
+  detail.querySelectorAll(".photo-tile img").forEach((image) => {
+    image.addEventListener("click", () => openPhotoModal(image.src, image.alt));
+  });
   detail.querySelectorAll("[data-photo-id]").forEach((button) => {
     button.addEventListener("click", () => deletePhoto(button.dataset.photoId));
   });
+}
+
+function openPhotoModal(src, alt) {
+  photoModalImage.src = src;
+  photoModalImage.alt = alt;
+  photoModal.classList.remove("hidden");
+  photoModal.setAttribute("aria-hidden", "false");
+}
+
+function closePhotoModal() {
+  photoModal.classList.add("hidden");
+  photoModal.setAttribute("aria-hidden", "true");
+  photoModalImage.src = "";
+  photoModalImage.alt = "";
 }
 
 function editJob(jobId) {

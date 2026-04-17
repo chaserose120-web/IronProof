@@ -399,6 +399,10 @@ textarea:focus {
   box-shadow: 0 10px 26px rgba(21, 19, 15, 0.14);
 }
 
+.photo-gallery img {
+  cursor: zoom-in;
+}
+
 .photo-tile {
   position: relative;
   margin: 0;
@@ -431,6 +435,24 @@ textarea:focus {
 .photo-status {
   margin: 10px 0 0;
   font-weight: 800;
+}
+
+.photo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(10, 9, 7, 0.9);
+}
+
+.photo-modal img {
+  max-width: min(100%, 1180px);
+  max-height: 92vh;
+  border-radius: 22px;
+  object-fit: contain;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.44);
 }
 
 .form-actions,
