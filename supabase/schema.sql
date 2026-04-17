@@ -167,3 +167,147 @@ on public.jobs
 for delete
 to authenticated
 using (created_by = auth.uid());
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'job-photos',
+  'job-photos',
+  false,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+create table if not exists public.job_photos (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references public.jobs(id) on delete cascade,
+  uploaded_by uuid not null references public.profiles(id) on delete cascade,
+  file_path text not null unique,
+  file_name text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.job_photos add column if not exists id uuid default gen_random_uuid();
+alter table public.job_photos add column if not exists job_id uuid references public.jobs(id) on delete cascade;
+alter table public.job_photos add column if not exists uploaded_by uuid references public.profiles(id) on delete cascade;
+alter table public.job_photos add column if not exists file_path text;
+alter table public.job_photos add column if not exists file_name text;
+alter table public.job_photos add column if not exists created_at timestamptz default now();
+
+alter table public.job_photos alter column created_at set default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_photos'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.job_photos add primary key (id);
+  end if;
+end;
+$$;
+
+create unique index if not exists job_photos_file_path_key
+on public.job_photos (file_path);
+
+create index if not exists job_photos_job_id_created_at_idx
+on public.job_photos (job_id, created_at);
+
+create or replace function public.set_job_photo_uploaded_by()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.uploaded_by := coalesce(new.uploaded_by, auth.uid());
+  return new;
+end;
+$$;
+
+drop trigger if exists set_job_photo_uploaded_by_before_insert on public.job_photos;
+create trigger set_job_photo_uploaded_by_before_insert
+before insert on public.job_photos
+for each row execute function public.set_job_photo_uploaded_by();
+
+alter table public.job_photos enable row level security;
+
+drop policy if exists "job_photos_select_own_jobs" on public.job_photos;
+create policy "job_photos_select_own_jobs"
+on public.job_photos
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.jobs
+    where jobs.id = job_photos.job_id
+      and jobs.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "job_photos_insert_own_jobs" on public.job_photos;
+create policy "job_photos_insert_own_jobs"
+on public.job_photos
+for insert
+to authenticated
+with check (
+  uploaded_by = auth.uid()
+  and exists (
+    select 1
+    from public.jobs
+    where jobs.id = job_photos.job_id
+      and jobs.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "job_photos_delete_own_jobs" on public.job_photos;
+create policy "job_photos_delete_own_jobs"
+on public.job_photos
+for delete
+to authenticated
+using (
+  uploaded_by = auth.uid()
+  and exists (
+    select 1
+    from public.jobs
+    where jobs.id = job_photos.job_id
+      and jobs.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "storage_job_photos_select_own_folder" on storage.objects;
+create policy "storage_job_photos_select_own_folder"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'job-photos'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "storage_job_photos_insert_own_folder" on storage.objects;
+create policy "storage_job_photos_insert_own_folder"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'job-photos'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "storage_job_photos_delete_own_folder" on storage.objects;
+create policy "storage_job_photos_delete_own_folder"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'job-photos'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);

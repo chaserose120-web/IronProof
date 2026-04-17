@@ -399,6 +399,35 @@ textarea:focus {
   box-shadow: 0 10px 26px rgba(21, 19, 15, 0.14);
 }
 
+.photo-tile {
+  position: relative;
+  margin: 0;
+}
+
+.photo-tile figcaption {
+  max-width: 108px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.photo-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #fff8df;
+  background: rgba(169, 79, 37, 0.92);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
 .form-actions,
 .detail-actions {
   flex-wrap: wrap;

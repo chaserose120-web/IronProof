@@ -26,6 +26,7 @@ const supabaseClient =
 let currentUser = null;
 let currentProfile = null;
 let jobs = [];
+let jobPhotosByJobId = new Map();
 let activeFilter = "All";
 let activeJobId = null;
 let editingJobId = null;
@@ -135,6 +136,7 @@ form.addEventListener("submit", async (event) => {
     const savedJob = editingJobId
       ? await updateJob(editingJobId, payload)
       : await createJob({ ...payload, created_by: currentUser.id });
+    await uploadStagedPhotos(savedJob.id);
     activeJobId = savedJob.id;
     await loadJobs();
     resetForm();
@@ -283,6 +285,11 @@ async function loadJobs() {
     }
 
     jobs = data.map(normalizeJob);
+    await loadPhotosForJobs(jobs.map((job) => job.id));
+    jobs = jobs.map((job) => ({
+      ...job,
+      photos: jobPhotosByJobId.get(job.id) || [],
+    }));
     activeJobId = activeJobId && getJob(activeJobId) ? activeJobId : jobs[0]?.id || null;
     render();
   } catch (error) {
@@ -346,8 +353,85 @@ function normalizeJob(job) {
     createdAt: job.created_at || "",
     createdBy: job.created_by || "",
     updatedBy: job.updated_by || "",
-    photos: [],
+    photos: jobPhotosByJobId.get(job.id) || [],
   };
+}
+
+async function loadPhotosForJobs(jobIds) {
+  jobPhotosByJobId = new Map();
+
+  if (!jobIds.length) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("job_photos")
+    .select("id,job_id,uploaded_by,file_path,file_name,created_at")
+    .in("job_id", jobIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const photos = await Promise.all(
+    data.map(async (photo) => {
+      const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+        .from("job-photos")
+        .createSignedUrl(photo.file_path, 60 * 60);
+
+      if (signedUrlError) {
+        throw signedUrlError;
+      }
+
+      return {
+        id: photo.id,
+        jobId: photo.job_id,
+        uploadedBy: photo.uploaded_by,
+        filePath: photo.file_path,
+        fileName: photo.file_name,
+        createdAt: photo.created_at,
+        url: signedUrlData.signedUrl,
+      };
+    }),
+  );
+
+  photos.forEach((photo) => {
+    const existingPhotos = jobPhotosByJobId.get(photo.jobId) || [];
+    jobPhotosByJobId.set(photo.jobId, [...existingPhotos, photo]);
+  });
+}
+
+async function uploadStagedPhotos(jobId) {
+  if (!stagedPhotos.length) {
+    return;
+  }
+
+  for (const photo of stagedPhotos) {
+    const filePath = createPhotoPath(jobId, photo.name);
+    const { error: uploadError } = await supabaseClient.storage
+      .from("job-photos")
+      .upload(filePath, photo.blob, {
+        contentType: photo.blob.type || "image/jpeg",
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    const { error: insertError } = await supabaseClient.from("job_photos").insert({
+      job_id: jobId,
+      uploaded_by: currentUser.id,
+      file_path: filePath,
+      file_name: photo.name,
+    });
+
+    if (insertError) {
+      await supabaseClient.storage.from("job-photos").remove([filePath]);
+      throw insertError;
+    }
+  }
 }
 
 function render() {
@@ -359,7 +443,7 @@ function render() {
 function renderStats() {
   document.querySelector("#totalJobs").textContent = jobs.length;
   document.querySelector("#openJobs").textContent = jobs.filter((job) => job.status !== "Complete").length;
-  document.querySelector("#photoCount").textContent = "0";
+  document.querySelector("#photoCount").textContent = jobs.reduce((count, job) => count + job.photos.length, 0);
 }
 
 function renderJobList() {
@@ -451,9 +535,23 @@ function renderDetail() {
     </div>
 
     <div class="photo-section">
-      <h3>Photos (0)</h3>
+      <h3>Photos (${job.photos.length})</h3>
       <div class="photo-gallery">
-        <p>Photo upload is not connected yet.</p>
+        ${
+          job.photos.length
+            ? job.photos
+                .map(
+                  (photo) => `
+                    <figure class="photo-tile">
+                      <img src="${photo.url}" alt="${escapeHtml(photo.fileName)}" />
+                      <figcaption>${escapeHtml(photo.fileName)}</figcaption>
+                      <button class="photo-delete" type="button" data-photo-id="${photo.id}">Delete</button>
+                    </figure>
+                  `,
+                )
+                .join("")
+            : "<p>No photos saved on this job yet.</p>"
+        }
       </div>
     </div>
 
@@ -473,6 +571,9 @@ function renderDetail() {
     output.select();
   });
   detail.querySelector("[data-action='delete']").addEventListener("click", () => deleteJob(job.id));
+  detail.querySelectorAll("[data-photo-id]").forEach((button) => {
+    button.addEventListener("click", () => deletePhoto(button.dataset.photoId));
+  });
 }
 
 function editJob(jobId) {
@@ -501,7 +602,13 @@ async function deleteJob(jobId) {
   }
 
   try {
+    const photoPaths = job.photos.map((photo) => photo.filePath);
     await deleteJobRecord(jobId);
+
+    if (photoPaths.length) {
+      await supabaseClient.storage.from("job-photos").remove(photoPaths);
+    }
+
     activeJobId = jobs.find((savedJob) => savedJob.id !== jobId)?.id || null;
     resetForm();
     await loadJobs();
@@ -510,9 +617,47 @@ async function deleteJob(jobId) {
   }
 }
 
+async function deletePhoto(photoId) {
+  const job = getJob(activeJobId);
+  const photo = job?.photos.find((savedPhoto) => savedPhoto.id === photoId);
+
+  if (!photo) {
+    return;
+  }
+
+  const confirmed = confirm(`Delete photo "${photo.fileName}"?`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    const { error: deleteError } = await supabaseClient
+      .from("job_photos")
+      .delete()
+      .eq("id", photo.id)
+      .eq("uploaded_by", currentUser.id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    const { error: storageError } = await supabaseClient.storage.from("job-photos").remove([photo.filePath]);
+
+    if (storageError) {
+      throw storageError;
+    }
+
+    await loadJobs();
+  } catch (error) {
+    alert(`Photo delete failed: ${error.message}`);
+  }
+}
+
 function resetForm() {
   form.reset();
   editingJobId = null;
+  revokePhotoPreviews();
   stagedPhotos = [];
   submitButton.disabled = false;
   submitButton.textContent = "Save job";
@@ -523,23 +668,14 @@ function resetForm() {
 
 async function readPhotos(files) {
   const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-  const readers = imageFiles.map(
-    (file) =>
-      new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.addEventListener("load", () => {
-          resizePhoto(reader.result, file.name).then(resolve);
-        });
-        reader.readAsDataURL(file);
-      }),
-  );
-
-  return Promise.all(readers);
+  return Promise.all(imageFiles.map((file) => resizePhoto(file)));
 }
 
-function resizePhoto(source, name) {
+function resizePhoto(file) {
   return new Promise((resolve) => {
     const image = new Image();
+    const reader = new FileReader();
+
     image.addEventListener("load", () => {
       const maxSize = 1400;
       const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
@@ -550,19 +686,52 @@ function resizePhoto(source, name) {
       const context = canvas.getContext("2d");
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-      resolve({
-        name,
-        type: "image/jpeg",
-        data: canvas.toDataURL("image/jpeg", 0.78),
-      });
+      canvas.toBlob(
+        (blob) => {
+          const name = `${file.name.replace(/\.[^.]+$/, "") || "photo"}.jpg`;
+
+          resolve({
+            name,
+            blob,
+            previewUrl: URL.createObjectURL(blob),
+          });
+        },
+        "image/jpeg",
+        0.78,
+      );
     });
-    image.src = source;
+
+    reader.addEventListener("load", () => {
+      image.src = reader.result;
+    });
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function createPhotoPath(jobId, fileName) {
+  const safeName = fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const id = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `photo-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return `${currentUser.id}/${jobId}/${id}-${safeName || "photo.jpg"}`;
+}
+
+function revokePhotoPreviews() {
+  stagedPhotos.forEach((photo) => {
+    if (photo.previewUrl) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
   });
 }
 
 function renderPhotoPreview(photos) {
   photoPreview.innerHTML = photos
-    .map((photo) => `<img src="${photo.data}" alt="${escapeHtml(photo.name)}" />`)
+    .map((photo) => `<img src="${photo.previewUrl}" alt="${escapeHtml(photo.name)}" />`)
     .join("");
 }
 
@@ -618,7 +787,7 @@ function buildReport(job) {
     "",
     `Parts / Fluids / Tooling: ${job.parts || "N/A"}`,
     "",
-    "Photos attached in IronProof: 0",
+    `Photos attached in IronProof: ${job.photos.length}`,
   ].join("\n");
 }
 
