@@ -744,25 +744,35 @@ async function deletePhoto(photoId) {
     return;
   }
 
+  showPhotoStatus(`Deleting ${photo.fileName}...`);
+
   try {
-    const { error: deleteError } = await supabaseClient
-      .from("job_photos")
-      .delete()
-      .eq("id", photo.id)
-      .eq("uploaded_by", currentUser.id);
-
-    if (deleteError) {
-      throw deleteError;
-    }
-
     const { error: storageError } = await supabaseClient.storage.from("job-photos").remove([photo.filePath]);
 
     if (storageError) {
-      throw storageError;
+      throw new Error(`Storage delete failed: ${storageError.message}`);
+    }
+
+    const { error: databaseError } = await supabaseClient
+      .from("job_photos")
+      .delete()
+      .eq("id", photo.id)
+      .eq("file_path", photo.filePath)
+      .eq("uploaded_by", currentUser.id);
+
+    if (databaseError) {
+      throw new Error(`Database delete failed: ${databaseError.message}`);
     }
 
     await loadJobs();
+    showPhotoStatus(`Deleted ${photo.fileName}.`);
   } catch (error) {
+    console.error("[IronProof photos] delete failure", {
+      photoId: photo.id,
+      filePath: photo.filePath,
+      error,
+    });
+    showPhotoStatus(`Photo delete failed: ${error.message}`);
     alert(`Photo delete failed: ${error.message}`);
   }
 }
