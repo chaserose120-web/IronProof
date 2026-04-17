@@ -58,18 +58,30 @@ for each row execute function public.handle_new_user_profile();
 
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
+  job_type text not null default 'Heavy',
   title text not null,
   status text not null default 'Open',
   work_order text,
   job_date date,
+  customer_name text,
+  customer_phone text,
+  customer_email text,
   machine text,
   serial text,
   customer text,
   meter text,
+  year text,
+  make text,
+  model text,
+  vin text,
+  mileage text,
   summary text not null,
   complaint text,
   cause text,
   correction text,
+  customer_concern text,
+  diagnosis text,
+  repair_performed text,
   parts text,
   created_at timestamptz not null default now(),
   created_by uuid references public.profiles(id) on delete cascade,
@@ -77,25 +89,42 @@ create table if not exists public.jobs (
 );
 
 alter table public.jobs add column if not exists id uuid default gen_random_uuid();
+alter table public.jobs add column if not exists job_type text default 'Heavy';
 alter table public.jobs add column if not exists title text;
 alter table public.jobs add column if not exists status text default 'Open';
 alter table public.jobs add column if not exists work_order text;
 alter table public.jobs add column if not exists job_date date;
+alter table public.jobs add column if not exists customer_name text;
+alter table public.jobs add column if not exists customer_phone text;
+alter table public.jobs add column if not exists customer_email text;
 alter table public.jobs add column if not exists machine text;
 alter table public.jobs add column if not exists serial text;
 alter table public.jobs add column if not exists customer text;
 alter table public.jobs add column if not exists meter text;
+alter table public.jobs add column if not exists year text;
+alter table public.jobs add column if not exists make text;
+alter table public.jobs add column if not exists model text;
+alter table public.jobs add column if not exists vin text;
+alter table public.jobs add column if not exists mileage text;
 alter table public.jobs add column if not exists summary text;
 alter table public.jobs add column if not exists complaint text;
 alter table public.jobs add column if not exists cause text;
 alter table public.jobs add column if not exists correction text;
+alter table public.jobs add column if not exists customer_concern text;
+alter table public.jobs add column if not exists diagnosis text;
+alter table public.jobs add column if not exists repair_performed text;
 alter table public.jobs add column if not exists parts text;
 alter table public.jobs add column if not exists created_at timestamptz default now();
 alter table public.jobs add column if not exists created_by uuid references public.profiles(id) on delete cascade;
 alter table public.jobs add column if not exists updated_by uuid references public.profiles(id) on delete set null;
 
+alter table public.jobs alter column job_type set default 'Heavy';
 alter table public.jobs alter column status set default 'Open';
 alter table public.jobs alter column created_at set default now();
+
+update public.jobs
+set job_type = 'Heavy'
+where job_type is null;
 
 do $$
 begin

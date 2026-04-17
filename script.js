@@ -20,6 +20,8 @@ const detail = document.querySelector("#jobDetail");
 const emptyDetail = document.querySelector("#emptyDetail");
 const submitButton = document.querySelector("#submitButton");
 const clearFormButton = document.querySelector("#clearFormButton");
+const jobTypeInputs = document.querySelectorAll("input[name='jobType']");
+const jobTypeFields = document.querySelectorAll("[data-job-type-fields]");
 
 const supabaseConfig = window.IRONPROOF_SUPABASE || {};
 const supabaseClient =
@@ -37,6 +39,7 @@ let editingJobId = null;
 let stagedPhotos = [];
 
 setDefaultDate();
+updateJobTypeFields("Heavy");
 render();
 initializeAuth();
 
@@ -157,19 +160,32 @@ form.addEventListener("submit", async (event) => {
   }
 
   const formData = new FormData(form);
+  const jobType = getValue(formData, "jobType") || "Heavy";
   const payload = {
+    job_type: jobType,
     title: getValue(formData, "title"),
     status: getValue(formData, "status") || "Open",
     work_order: getValue(formData, "workOrder"),
     job_date: getValue(formData, "jobDate") || null,
+    customer_name: getValue(formData, "customerName"),
+    customer_phone: getValue(formData, "customerPhone"),
+    customer_email: getValue(formData, "customerEmail"),
     machine: getValue(formData, "machine"),
     serial: getValue(formData, "serial"),
     customer: getValue(formData, "customer"),
     meter: getValue(formData, "meter"),
+    year: getValue(formData, "year"),
+    make: getValue(formData, "make"),
+    model: getValue(formData, "model"),
+    vin: getValue(formData, "vin"),
+    mileage: getValue(formData, "mileage"),
     summary: getValue(formData, "summary"),
     complaint: getValue(formData, "complaint"),
     cause: getValue(formData, "cause"),
     correction: getValue(formData, "correction"),
+    customer_concern: getValue(formData, "customerConcern"),
+    diagnosis: getValue(formData, "diagnosis"),
+    repair_performed: getValue(formData, "repairPerformed"),
     parts: getValue(formData, "parts"),
     updated_by: currentUser.id,
   };
@@ -211,6 +227,12 @@ filterButtons.forEach((button) => {
     activeFilter = button.dataset.filter;
     filterButtons.forEach((item) => item.classList.toggle("active", item === button));
     renderJobList();
+  });
+});
+
+jobTypeInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    updateJobTypeFields(input.value);
   });
 });
 
@@ -329,7 +351,7 @@ async function loadJobs() {
     const { data, error } = await supabaseClient
       .from("jobs")
       .select(
-        "id,title,status,work_order,job_date,machine,serial,customer,meter,summary,complaint,cause,correction,parts,created_at,created_by,updated_by",
+        "id,job_type,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by",
       )
       .eq("created_by", currentUser.id)
       .order("created_at", { ascending: false });
@@ -391,18 +413,30 @@ async function deleteJobRecord(jobId) {
 function normalizeJob(job) {
   return {
     id: job.id,
+    jobType: job.job_type || "Heavy",
     title: job.title || "",
     status: job.status || "Open",
     workOrder: job.work_order || "",
     jobDate: job.job_date || "",
+    customerName: job.customer_name || job.customer || "",
+    customerPhone: job.customer_phone || "",
+    customerEmail: job.customer_email || "",
     machine: job.machine || "",
     serial: job.serial || "",
     customer: job.customer || "",
     meter: job.meter || "",
+    year: job.year || "",
+    make: job.make || "",
+    model: job.model || "",
+    vin: job.vin || "",
+    mileage: job.mileage || "",
     summary: job.summary || "",
     complaint: job.complaint || "",
     cause: job.cause || "",
     correction: job.correction || "",
+    customerConcern: job.customer_concern || "",
+    diagnosis: job.diagnosis || "",
+    repairPerformed: job.repair_performed || "",
     parts: job.parts || "",
     createdAt: job.created_at || "",
     createdBy: job.created_by || "",
@@ -551,9 +585,16 @@ function renderJobList() {
       job.status,
       job.workOrder,
       job.jobDate,
+      job.customerName,
+      job.customerPhone,
+      job.customerEmail,
       job.machine,
       job.serial,
       job.customer,
+      job.year,
+      job.make,
+      job.model,
+      job.vin,
       job.summary,
     ]
       .join(" ")
@@ -580,7 +621,9 @@ function renderJobList() {
     status.textContent = job.status;
     status.className = `status-pill ${job.status.split(" ")[0]}`;
     card.querySelector("strong").textContent = job.title;
-    card.querySelector("small").textContent = [job.workOrder, job.machine, job.serial].filter(Boolean).join(" | ");
+    card.querySelector("small").textContent = [job.workOrder, getPrimaryUnitLabel(job), getPrimaryIdentifier(job)]
+      .filter(Boolean)
+      .join(" | ");
     card.querySelector("p").textContent = job.summary;
     card.addEventListener("click", () => {
       activeJobId = job.id;
@@ -614,19 +657,18 @@ function renderDetail() {
     </div>
 
     <div class="detail-meta">
+      ${metaItem("Job type", job.jobType)}
       ${metaItem("Work order", job.workOrder)}
       ${metaItem("Date", formatDate(job.jobDate))}
-      ${metaItem("Machine", job.machine)}
-      ${metaItem("Serial", job.serial)}
-      ${metaItem("Customer / location", job.customer)}
-      ${metaItem("Hours / miles", job.meter)}
+      ${metaItem("Customer", job.customerName)}
+      ${metaItem("Phone", job.customerPhone)}
+      ${metaItem("Email", job.customerEmail)}
+      ${job.jobType === "Automotive" ? renderAutomotiveMeta(job) : renderHeavyMeta(job)}
     </div>
 
     <div class="detail-grid">
       ${noteBlock("Brief summary", job.summary, true)}
-      ${noteBlock("Complaint", job.complaint)}
-      ${noteBlock("Cause", job.cause)}
-      ${noteBlock("Correction", job.correction)}
+      ${job.jobType === "Automotive" ? renderAutomotiveNotes(job) : renderHeavyNotes(job)}
       ${noteBlock("Parts / fluids / tooling", job.parts)}
     </div>
 
@@ -689,12 +731,27 @@ function closePhotoModal() {
   photoModalImage.alt = "";
 }
 
+function updateJobTypeFields(jobType) {
+  jobTypeFields.forEach((fieldGroup) => {
+    fieldGroup.classList.toggle("hidden", fieldGroup.dataset.jobTypeFields !== jobType);
+  });
+}
+
+function setJobType(jobType) {
+  const nextJobType = jobType || "Heavy";
+  jobTypeInputs.forEach((input) => {
+    input.checked = input.value === nextJobType;
+  });
+  updateJobTypeFields(nextJobType);
+}
+
 function editJob(jobId) {
   const job = getJob(jobId);
   editingJobId = jobId;
   submitButton.textContent = "Update job";
   stagedPhotos = [];
   renderPhotoPreview(stagedPhotos);
+  setJobType(job.jobType);
 
   Object.entries(job).forEach(([key, value]) => {
     const input = form.elements[key];
@@ -788,6 +845,7 @@ function resetForm() {
   renderPhotoPreview(stagedPhotos);
   showPhotoStatus("");
   setDefaultDate();
+  setJobType("Heavy");
 }
 
 async function readPhotos(files) {
@@ -902,6 +960,47 @@ function metaItem(label, value) {
   return `<span>${label}: ${escapeHtml(value)}</span>`;
 }
 
+function getPrimaryUnitLabel(job) {
+  if (job.jobType === "Automotive") {
+    return [job.year, job.make, job.model].filter(Boolean).join(" ");
+  }
+
+  return job.machine;
+}
+
+function getPrimaryIdentifier(job) {
+  return job.jobType === "Automotive" ? job.vin : job.serial;
+}
+
+function renderHeavyMeta(job) {
+  return [
+    metaItem("Machine", job.machine),
+    metaItem("Serial", job.serial),
+    metaItem("Customer / location", job.customer),
+    metaItem("Hours / miles", job.meter),
+  ].join("");
+}
+
+function renderAutomotiveMeta(job) {
+  return [
+    metaItem("Vehicle", [job.year, job.make, job.model].filter(Boolean).join(" ")),
+    metaItem("VIN", job.vin),
+    metaItem("Mileage", job.mileage),
+  ].join("");
+}
+
+function renderHeavyNotes(job) {
+  return [noteBlock("Complaint", job.complaint), noteBlock("Cause", job.cause), noteBlock("Correction", job.correction)].join("");
+}
+
+function renderAutomotiveNotes(job) {
+  return [
+    noteBlock("Customer concern", job.customerConcern),
+    noteBlock("Diagnosis", job.diagnosis),
+    noteBlock("Repair performed", job.repairPerformed),
+  ].join("");
+}
+
 function noteBlock(label, value, full = false) {
   return `
     <section class="note-block ${full ? "full" : ""}">
@@ -912,23 +1011,43 @@ function noteBlock(label, value, full = false) {
 }
 
 function buildReport(job) {
+  const typeSpecificLines =
+    job.jobType === "Automotive"
+      ? [
+          `Vehicle: ${[job.year, job.make, job.model].filter(Boolean).join(" ") || "N/A"}`,
+          `VIN: ${job.vin || "N/A"}`,
+          `Mileage: ${job.mileage || "N/A"}`,
+          "",
+          `Customer Concern: ${job.customerConcern || "N/A"}`,
+          "",
+          `Diagnosis: ${job.diagnosis || "N/A"}`,
+          "",
+          `Repair Performed: ${job.repairPerformed || "N/A"}`,
+        ]
+      : [
+          `Machine: ${job.machine || "N/A"}`,
+          `Serial: ${job.serial || "N/A"}`,
+          `Hours / Miles: ${job.meter || "N/A"}`,
+          "",
+          `Complaint: ${job.complaint || "N/A"}`,
+          "",
+          `Cause: ${job.cause || "N/A"}`,
+          "",
+          `Correction: ${job.correction || "N/A"}`,
+        ];
+
   return [
     `Job: ${job.title}`,
+    `Job Type: ${job.jobType}`,
     `Status: ${job.status}`,
     `Work Order: ${job.workOrder || "N/A"}`,
     `Date: ${formatDate(job.jobDate) || "N/A"}`,
-    `Machine: ${job.machine || "N/A"}`,
-    `Serial: ${job.serial || "N/A"}`,
-    `Customer / Location: ${job.customer || "N/A"}`,
-    `Hours / Miles: ${job.meter || "N/A"}`,
+    `Customer Name: ${job.customerName || "N/A"}`,
+    `Customer Phone: ${job.customerPhone || "N/A"}`,
+    `Customer Email: ${job.customerEmail || "N/A"}`,
+    ...typeSpecificLines,
     "",
     `Summary: ${job.summary || "N/A"}`,
-    "",
-    `Complaint: ${job.complaint || "N/A"}`,
-    "",
-    `Cause: ${job.cause || "N/A"}`,
-    "",
-    `Correction: ${job.correction || "N/A"}`,
     "",
     `Parts / Fluids / Tooling: ${job.parts || "N/A"}`,
     "",

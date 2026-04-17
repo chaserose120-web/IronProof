@@ -114,6 +114,17 @@
             </p>
           </div>
 
+          <div class="job-type-switch" aria-label="Job type">
+            <label>
+              <input type="radio" name="jobType" value="Heavy" checked />
+              Heavy
+            </label>
+            <label>
+              <input type="radio" name="jobType" value="Automotive" />
+              Automotive
+            </label>
+          </div>
+
           <div class="form-grid">
             <label>
               Job title
@@ -140,7 +151,27 @@
               Date
               <input id="jobDate" name="jobDate" type="date" />
             </label>
+          </div>
 
+          <div class="form-grid three">
+            <label>
+              Customer name
+              <input id="customerName" name="customerName" type="text" placeholder="Customer name" />
+            </label>
+
+            <label>
+              Customer phone
+              <input id="customerPhone" name="customerPhone" type="tel" placeholder="555-123-4567" />
+            </label>
+
+            <label>
+              Customer email
+              <input id="customerEmail" name="customerEmail" type="email" placeholder="customer@example.com" />
+            </label>
+          </div>
+
+          <div class="job-type-fields" data-job-type-fields="Heavy">
+            <div class="form-grid">
             <label>
               Machine / model
               <input id="machine" name="machine" type="text" placeholder="Cat 980M Loader" />
@@ -160,6 +191,36 @@
               Hours / miles
               <input id="meter" name="meter" type="text" placeholder="8,420 hrs" />
             </label>
+            </div>
+          </div>
+
+          <div class="job-type-fields hidden" data-job-type-fields="Automotive">
+            <div class="form-grid">
+              <label>
+                Year
+                <input id="year" name="year" type="text" placeholder="2021" />
+              </label>
+
+              <label>
+                Make
+                <input id="make" name="make" type="text" placeholder="Ford" />
+              </label>
+
+              <label>
+                Model
+                <input id="model" name="model" type="text" placeholder="F-350" />
+              </label>
+
+              <label>
+                VIN
+                <input id="vin" name="vin" type="text" placeholder="1FT8W3..." />
+              </label>
+
+              <label>
+                Mileage
+                <input id="mileage" name="mileage" type="text" placeholder="142,000 mi" />
+              </label>
+            </div>
           </div>
 
           <label>
@@ -173,21 +234,42 @@
             ></textarea>
           </label>
 
-          <div class="form-grid three">
-            <label>
-              Complaint
-              <textarea id="complaint" name="complaint" rows="4" placeholder="What was reported?"></textarea>
-            </label>
+          <div class="job-type-fields" data-job-type-fields="Heavy">
+            <div class="form-grid three">
+              <label>
+                Complaint
+                <textarea id="complaint" name="complaint" rows="4" placeholder="What was reported?"></textarea>
+              </label>
 
-            <label>
-              Cause
-              <textarea id="cause" name="cause" rows="4" placeholder="What did you find?"></textarea>
-            </label>
+              <label>
+                Cause
+                <textarea id="cause" name="cause" rows="4" placeholder="What did you find?"></textarea>
+              </label>
 
-            <label>
-              Correction
-              <textarea id="correction" name="correction" rows="4" placeholder="What did you repair or recommend?"></textarea>
-            </label>
+              <label>
+                Correction
+                <textarea id="correction" name="correction" rows="4" placeholder="What did you repair or recommend?"></textarea>
+              </label>
+            </div>
+          </div>
+
+          <div class="job-type-fields hidden" data-job-type-fields="Automotive">
+            <div class="form-grid three">
+              <label>
+                Customer concern
+                <textarea id="customerConcern" name="customerConcern" rows="4" placeholder="What did the customer report?"></textarea>
+              </label>
+
+              <label>
+                Diagnosis
+                <textarea id="diagnosis" name="diagnosis" rows="4" placeholder="What did you find?"></textarea>
+              </label>
+
+              <label>
+                Repair performed
+                <textarea id="repairPerformed" name="repairPerformed" rows="4" placeholder="What repair was completed?"></textarea>
+              </label>
+            </div>
           </div>
 
           <label>

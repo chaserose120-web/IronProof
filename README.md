@@ -30,3 +30,10 @@ Set these Vercel environment variables before deploying:
 ## Current Storage Behavior
 
 Users sign up and log in with Supabase Auth. A profile is created for each auth user, jobs are scoped by `created_by`, and photos are stored in the private `job-photos` bucket with metadata in `job_photos`. The app does not add collaboration or teams yet.
+
+Jobs support two form types:
+
+- Heavy: machine, serial, meter, complaint, cause, correction, and parts.
+- Automotive: year, make, model, VIN, mileage, customer concern, diagnosis, repair performed, and parts.
+
+Both job types include customer name, customer phone, customer email, work order, date, summary, and photos. Existing jobs default to `Heavy`.
