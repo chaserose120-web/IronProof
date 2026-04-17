@@ -340,3 +340,149 @@ using (
   bucket_id = 'job-photos'
   and (storage.foldername(name))[1] = auth.uid()::text
 );
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values (
+  'diagnostic-files',
+  'diagnostic-files',
+  false,
+  52428800
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit;
+
+create table if not exists public.diagnostic_files (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references public.jobs(id) on delete cascade,
+  uploaded_by uuid not null references public.profiles(id) on delete cascade,
+  file_name text not null,
+  file_path text not null unique,
+  file_type text not null default 'Other',
+  created_at timestamptz not null default now()
+);
+
+alter table public.diagnostic_files add column if not exists id uuid default gen_random_uuid();
+alter table public.diagnostic_files add column if not exists job_id uuid references public.jobs(id) on delete cascade;
+alter table public.diagnostic_files add column if not exists uploaded_by uuid references public.profiles(id) on delete cascade;
+alter table public.diagnostic_files add column if not exists file_name text;
+alter table public.diagnostic_files add column if not exists file_path text;
+alter table public.diagnostic_files add column if not exists file_type text default 'Other';
+alter table public.diagnostic_files add column if not exists created_at timestamptz default now();
+
+alter table public.diagnostic_files alter column file_type set default 'Other';
+alter table public.diagnostic_files alter column created_at set default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.diagnostic_files'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.diagnostic_files add primary key (id);
+  end if;
+end;
+$$;
+
+create unique index if not exists diagnostic_files_file_path_key
+on public.diagnostic_files (file_path);
+
+create index if not exists diagnostic_files_job_id_created_at_idx
+on public.diagnostic_files (job_id, created_at);
+
+create or replace function public.set_diagnostic_file_uploaded_by()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.uploaded_by := coalesce(new.uploaded_by, auth.uid());
+  return new;
+end;
+$$;
+
+drop trigger if exists set_diagnostic_file_uploaded_by_before_insert on public.diagnostic_files;
+create trigger set_diagnostic_file_uploaded_by_before_insert
+before insert on public.diagnostic_files
+for each row execute function public.set_diagnostic_file_uploaded_by();
+
+alter table public.diagnostic_files enable row level security;
+
+drop policy if exists "diagnostic_files_select_own_jobs" on public.diagnostic_files;
+create policy "diagnostic_files_select_own_jobs"
+on public.diagnostic_files
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.jobs
+    where jobs.id = diagnostic_files.job_id
+      and jobs.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "diagnostic_files_insert_own_heavy_jobs" on public.diagnostic_files;
+create policy "diagnostic_files_insert_own_heavy_jobs"
+on public.diagnostic_files
+for insert
+to authenticated
+with check (
+  uploaded_by = auth.uid()
+  and exists (
+    select 1
+    from public.jobs
+    where jobs.id = diagnostic_files.job_id
+      and jobs.created_by = auth.uid()
+      and jobs.job_type = 'Heavy'
+  )
+);
+
+drop policy if exists "diagnostic_files_delete_own_jobs" on public.diagnostic_files;
+create policy "diagnostic_files_delete_own_jobs"
+on public.diagnostic_files
+for delete
+to authenticated
+using (
+  uploaded_by = auth.uid()
+  and exists (
+    select 1
+    from public.jobs
+    where jobs.id = diagnostic_files.job_id
+      and jobs.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "storage_diagnostic_files_select_own_folder" on storage.objects;
+create policy "storage_diagnostic_files_select_own_folder"
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'diagnostic-files'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "storage_diagnostic_files_insert_own_folder" on storage.objects;
+create policy "storage_diagnostic_files_insert_own_folder"
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'diagnostic-files'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);
+
+drop policy if exists "storage_diagnostic_files_delete_own_folder" on storage.objects;
+create policy "storage_diagnostic_files_delete_own_folder"
+on storage.objects
+for delete
+to authenticated
+using (
+  bucket_id = 'diagnostic-files'
+  and (storage.foldername(name))[1] = auth.uid()::text
+);

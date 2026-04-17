@@ -322,6 +322,32 @@
             ></textarea>
           </label>
 
+          <div class="job-type-fields" data-job-type-fields="Heavy">
+            <div class="form-section-title">
+              <span>Diagnostics</span>
+              <p>Attach reports or data files from diagnostic tools for this Heavy job.</p>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                Diagnostic file type
+                <select id="diagnosticFileType" name="diagnosticFileType">
+                  <option>Diagnostic Report (PSR / INSITE / SA / EST)</option>
+                  <option>Data Logger</option>
+                  <option>Other</option>
+                </select>
+              </label>
+
+              <label class="file-drop">
+                <input id="diagnosticFile" name="diagnosticFile" type="file" />
+                <span>Add diagnostic file</span>
+                <small>PDF, report export, log file, screenshot, or tool output.</small>
+              </label>
+            </div>
+
+            <p class="file-status" id="diagnosticStatus" aria-live="polite"></p>
+          </div>
+
           <div class="form-section-title">
             <span>Photos</span>
             <p>Add proof photos for condition, diagnostics, failed parts, and completed work.</p>

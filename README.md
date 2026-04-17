@@ -1,6 +1,6 @@
 # IronProof
 
-IronProofService is a technician job logger for heavy-duty equipment and automotive service work. Email/password accounts, user profiles, per-user job records, and job photos are stored in Supabase.
+IronProofService is a technician job logger for heavy-duty equipment and automotive service work. Email/password accounts, user profiles, per-user job records, job photos, and Heavy diagnostics files are stored in Supabase.
 
 ## Files
 
@@ -8,7 +8,7 @@ IronProofService is a technician job logger for heavy-duty equipment and automot
 - `styles.css` contains the current visual design and responsive layout.
 - `script.js` contains Supabase auth, profile loading, owner-scoped job loading/saving/editing/deleting, photo upload/delete, search/filter, detail rendering, and report behavior.
 - `supabase-config.js` is a local fallback config file. Vercel generates the deployed version from environment variables during build.
-- `supabase/schema.sql` contains the Supabase profiles/jobs/job_photos tables, storage bucket setup, auth profile trigger, ownership triggers, and Row Level Security policies.
+- `supabase/schema.sql` contains the Supabase profiles/jobs/job_photos/diagnostic_files tables, storage bucket setup, auth profile trigger, ownership triggers, and Row Level Security policies.
 - `scripts/build.js` copies static files to `dist` and writes the Supabase browser config from `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 - `package.json` provides the Vercel build command.
 - `vercel.json` tells Vercel to deploy the built static files from `dist`.
@@ -36,4 +36,4 @@ Jobs support two form types:
 - Heavy: machine, serial, meter, complaint, cause, correction, and parts.
 - Automotive: year, make, model, VIN, mileage, customer concern, diagnosis, repair performed, and parts.
 
-Both job types include customer name, customer phone, customer email, work order, date, summary, and photos. Existing jobs default to `Heavy`.
+Both job types include customer name, customer phone, customer email, work order, date, summary, and photos. Heavy jobs can also store diagnostic reports, data logger files, and other diagnostic attachments. Existing jobs default to `Heavy`.

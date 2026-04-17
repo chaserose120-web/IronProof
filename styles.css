@@ -401,6 +401,20 @@ textarea:focus {
   text-align: center;
 }
 
+.file-drop,
+.photo-drop {
+  cursor: pointer;
+}
+
+.file-drop {
+  min-height: 88px;
+  padding: 18px;
+  border: 2px dashed rgba(21, 19, 15, 0.24);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.file-drop input,
 .photo-drop input {
   position: absolute;
   width: 1px;
@@ -408,11 +422,13 @@ textarea:focus {
   opacity: 0;
 }
 
+.file-drop span,
 .photo-drop span {
   color: var(--ink);
   font-size: 1.1rem;
 }
 
+.file-drop small,
 .photo-drop small {
   max-width: 520px;
   margin: 0 auto;
@@ -476,6 +492,39 @@ textarea:focus {
 
 .photo-status {
   margin: 10px 0 0;
+  font-weight: 800;
+}
+
+.diagnostic-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.diagnostic-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.diagnostic-item a {
+  font-weight: 900;
+  text-decoration: underline;
+}
+
+.diagnostic-item span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.file-status {
+  margin: 0;
   font-weight: 800;
 }
 

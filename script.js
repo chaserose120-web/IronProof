@@ -11,6 +11,8 @@ const photoDrop = document.querySelector(".photo-drop");
 const photoInput = document.querySelector("#photos");
 const photoPreview = document.querySelector("#photoPreview");
 const photoStatus = document.querySelector("#photoStatus");
+const diagnosticInput = document.querySelector("#diagnosticFile");
+const diagnosticStatus = document.querySelector("#diagnosticStatus");
 const photoModal = document.querySelector("#photoModal");
 const photoModalImage = document.querySelector("#photoModalImage");
 const jobList = document.querySelector("#jobList");
@@ -33,10 +35,12 @@ let currentUser = null;
 let currentProfile = null;
 let jobs = [];
 let jobPhotosByJobId = new Map();
+let diagnosticFilesByJobId = new Map();
 let activeFilter = "All";
 let activeJobId = null;
 let editingJobId = null;
 let stagedPhotos = [];
+let stagedDiagnosticFile = null;
 
 setDefaultDate();
 updateJobTypeFields("Heavy");
@@ -146,6 +150,16 @@ photoInput.addEventListener("change", async (event) => {
   }
 });
 
+diagnosticInput.addEventListener("change", (event) => {
+  const [file] = event.target.files;
+  stagedDiagnosticFile = file || null;
+  showDiagnosticStatus(
+    stagedDiagnosticFile
+      ? `${stagedDiagnosticFile.name} ready. Save the Heavy job to upload.`
+      : "",
+  );
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -193,6 +207,8 @@ form.addEventListener("submit", async (event) => {
   submitButton.disabled = true;
   submitButton.textContent = editingJobId ? "Updating..." : "Saving...";
   const photosToUpload = [...stagedPhotos];
+  const diagnosticFileToUpload = jobType === "Heavy" ? stagedDiagnosticFile : null;
+  const diagnosticFileType = getValue(formData, "diagnosticFileType");
 
   try {
     const savedJob = editingJobId
@@ -205,6 +221,7 @@ form.addEventListener("submit", async (event) => {
       stagedPhotoCount: photosToUpload.length,
     });
     await uploadStagedPhotos(jobIdForPhotos, photosToUpload);
+    await uploadDiagnosticFile(jobIdForPhotos, diagnosticFileToUpload, diagnosticFileType);
     activeJobId = jobIdForPhotos;
     await loadJobs();
     resetForm();
@@ -362,9 +379,11 @@ async function loadJobs() {
 
     jobs = data.map(normalizeJob);
     await loadPhotosForJobs(jobs.map((job) => job.id));
+    await loadDiagnosticFilesForJobs(jobs.map((job) => job.id));
     jobs = jobs.map((job) => ({
       ...job,
       photos: jobPhotosByJobId.get(job.id) || [],
+      diagnosticFiles: diagnosticFilesByJobId.get(job.id) || [],
     }));
     activeJobId = activeJobId && getJob(activeJobId) ? activeJobId : jobs[0]?.id || null;
     render();
@@ -442,6 +461,7 @@ function normalizeJob(job) {
     createdBy: job.created_by || "",
     updatedBy: job.updated_by || "",
     photos: jobPhotosByJobId.get(job.id) || [],
+    diagnosticFiles: diagnosticFilesByJobId.get(job.id) || [],
   };
 }
 
@@ -487,6 +507,52 @@ async function loadPhotosForJobs(jobIds) {
   photos.forEach((photo) => {
     const existingPhotos = jobPhotosByJobId.get(photo.jobId) || [];
     jobPhotosByJobId.set(photo.jobId, [...existingPhotos, photo]);
+  });
+}
+
+async function loadDiagnosticFilesForJobs(jobIds) {
+  diagnosticFilesByJobId = new Map();
+
+  if (!jobIds.length) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("diagnostic_files")
+    .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
+    .in("job_id", jobIds)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  const files = await Promise.all(
+    data.map(async (file) => {
+      const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+        .from("diagnostic-files")
+        .createSignedUrl(file.file_path, 60 * 60);
+
+      if (signedUrlError) {
+        throw signedUrlError;
+      }
+
+      return {
+        id: file.id,
+        jobId: file.job_id,
+        uploadedBy: file.uploaded_by,
+        fileName: file.file_name,
+        filePath: file.file_path,
+        fileType: file.file_type,
+        createdAt: file.created_at,
+        url: signedUrlData.signedUrl,
+      };
+    }),
+  );
+
+  files.forEach((file) => {
+    const existingFiles = diagnosticFilesByJobId.get(file.jobId) || [];
+    diagnosticFilesByJobId.set(file.jobId, [...existingFiles, file]);
   });
 }
 
@@ -562,6 +628,49 @@ async function uploadStagedPhotos(jobId, photosToUpload = stagedPhotos) {
   }
 
   showPhotoStatus(`Uploaded ${photosToUpload.length} photo${photosToUpload.length === 1 ? "" : "s"} successfully.`);
+}
+
+async function uploadDiagnosticFile(jobId, file, fileType) {
+  if (!file) {
+    return;
+  }
+
+  if (!jobId) {
+    const error = new Error("Cannot upload diagnostic file because the saved job id is missing.");
+    showDiagnosticStatus(error.message);
+    throw error;
+  }
+
+  showDiagnosticStatus(`Uploading ${file.name}...`);
+
+  const filePath = createDiagnosticFilePath(jobId, file.name);
+  const { error: uploadError } = await supabaseClient.storage
+    .from("diagnostic-files")
+    .upload(filePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+
+  if (uploadError) {
+    showDiagnosticStatus(`Diagnostic upload failed: ${uploadError.message}`);
+    throw uploadError;
+  }
+
+  const { error: insertError } = await supabaseClient.from("diagnostic_files").insert({
+    job_id: jobId,
+    uploaded_by: currentUser.id,
+    file_name: file.name,
+    file_path: filePath,
+    file_type: fileType || "Other",
+  });
+
+  if (insertError) {
+    await supabaseClient.storage.from("diagnostic-files").remove([filePath]);
+    showDiagnosticStatus(`Diagnostic metadata save failed: ${insertError.message}`);
+    throw insertError;
+  }
+
+  showDiagnosticStatus(`Uploaded ${file.name}.`);
 }
 
 function render() {
@@ -672,6 +781,17 @@ function renderDetail() {
       ${noteBlock("Parts / fluids / tooling", job.parts)}
     </div>
 
+    ${
+      job.jobType === "Heavy"
+        ? `
+          <div class="photo-section">
+            <h3>Diagnostics (${job.diagnosticFiles.length})</h3>
+            ${renderDiagnosticFiles(job)}
+          </div>
+        `
+        : ""
+    }
+
     <div class="photo-section">
       <h3>Photos (${job.photos.length})</h3>
       <div class="photo-gallery">
@@ -714,6 +834,9 @@ function renderDetail() {
   });
   detail.querySelectorAll("[data-photo-id]").forEach((button) => {
     button.addEventListener("click", () => deletePhoto(button.dataset.photoId));
+  });
+  detail.querySelectorAll("[data-diagnostic-id]").forEach((button) => {
+    button.addEventListener("click", () => deleteDiagnosticFile(button.dataset.diagnosticId));
   });
 }
 
@@ -773,10 +896,15 @@ async function deleteJob(jobId) {
 
   try {
     const photoPaths = job.photos.map((photo) => photo.filePath);
+    const diagnosticPaths = job.diagnosticFiles.map((file) => file.filePath);
     await deleteJobRecord(jobId);
 
     if (photoPaths.length) {
       await supabaseClient.storage.from("job-photos").remove(photoPaths);
+    }
+
+    if (diagnosticPaths.length) {
+      await supabaseClient.storage.from("diagnostic-files").remove(diagnosticPaths);
     }
 
     activeJobId = jobs.find((savedJob) => savedJob.id !== jobId)?.id || null;
@@ -834,6 +962,53 @@ async function deletePhoto(photoId) {
   }
 }
 
+async function deleteDiagnosticFile(diagnosticId) {
+  const job = getJob(activeJobId);
+  const file = job?.diagnosticFiles.find((savedFile) => savedFile.id === diagnosticId);
+
+  if (!file) {
+    return;
+  }
+
+  const confirmed = confirm(`Delete diagnostic file "${file.fileName}"?`);
+
+  if (!confirmed) {
+    return;
+  }
+
+  showDiagnosticStatus(`Deleting ${file.fileName}...`);
+
+  try {
+    const { error: storageError } = await supabaseClient.storage.from("diagnostic-files").remove([file.filePath]);
+
+    if (storageError) {
+      throw new Error(`Storage delete failed: ${storageError.message}`);
+    }
+
+    const { error: databaseError } = await supabaseClient
+      .from("diagnostic_files")
+      .delete()
+      .eq("id", file.id)
+      .eq("file_path", file.filePath)
+      .eq("uploaded_by", currentUser.id);
+
+    if (databaseError) {
+      throw new Error(`Database delete failed: ${databaseError.message}`);
+    }
+
+    await loadJobs();
+    showDiagnosticStatus(`Deleted ${file.fileName}.`);
+  } catch (error) {
+    console.error("[IronProof diagnostics] delete failure", {
+      diagnosticId: file.id,
+      filePath: file.filePath,
+      error,
+    });
+    showDiagnosticStatus(`Diagnostic delete failed: ${error.message}`);
+    alert(`Diagnostic delete failed: ${error.message}`);
+  }
+}
+
 function resetForm() {
   form.reset();
   editingJobId = null;
@@ -842,8 +1017,11 @@ function resetForm() {
   submitButton.disabled = false;
   submitButton.textContent = "Save job";
   photoInput.value = "";
+  diagnosticInput.value = "";
+  stagedDiagnosticFile = null;
   renderPhotoPreview(stagedPhotos);
   showPhotoStatus("");
+  showDiagnosticStatus("");
   setDefaultDate();
   setJobType("Heavy");
 }
@@ -920,6 +1098,18 @@ function createPhotoPath(jobId, fileName) {
   return `${currentUser.id}/${jobId}/${id}-${safeName || "photo.jpg"}`;
 }
 
+function createDiagnosticFilePath(jobId, fileName) {
+  const safeName = fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const id = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `diagnostic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return `${currentUser.id}/${jobId}/${id}-${safeName || "diagnostic-file"}`;
+}
+
 function revokePhotoPreviews() {
   stagedPhotos.forEach((photo) => {
     if (photo.previewUrl) {
@@ -936,6 +1126,10 @@ function renderPhotoPreview(photos) {
 
 function showPhotoStatus(message) {
   photoStatus.textContent = message;
+}
+
+function showDiagnosticStatus(message) {
+  diagnosticStatus.textContent = message;
 }
 
 function getJob(jobId) {
@@ -1001,6 +1195,32 @@ function renderAutomotiveNotes(job) {
   ].join("");
 }
 
+function renderDiagnosticFiles(job) {
+  if (!job.diagnosticFiles.length) {
+    return "<p>No diagnostic files saved on this job yet.</p>";
+  }
+
+  return `
+    <div class="diagnostic-list">
+      ${job.diagnosticFiles
+        .map(
+          (file) => `
+            <div class="diagnostic-item">
+              <div>
+                <a href="${file.url}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">
+                  ${escapeHtml(file.fileName)}
+                </a>
+                <span>${escapeHtml(file.fileType || "Other")}</span>
+              </div>
+              <button class="button danger compact-button" type="button" data-diagnostic-id="${file.id}">Delete</button>
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function noteBlock(label, value, full = false) {
   return `
     <section class="note-block ${full ? "full" : ""}">
@@ -1051,6 +1271,7 @@ function buildReport(job) {
     "",
     `Parts / Fluids / Tooling: ${job.parts || "N/A"}`,
     "",
+    ...(job.jobType === "Heavy" ? [`Diagnostic files attached in IronProof: ${job.diagnosticFiles.length}`, ""] : []),
     `Photos attached in IronProof: ${job.photos.length}`,
   ].join("\n");
 }
