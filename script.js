@@ -7,8 +7,10 @@ const logoutButton = document.querySelector("#logoutButton");
 const workspace = document.querySelector(".workspace");
 const detailPanel = document.querySelector("#detail");
 const form = document.querySelector("#jobForm");
+const photoDrop = document.querySelector(".photo-drop");
 const photoInput = document.querySelector("#photos");
 const photoPreview = document.querySelector("#photoPreview");
+const photoStatus = document.querySelector("#photoStatus");
 const jobList = document.querySelector("#jobList");
 const searchInput = document.querySelector("#searchInput");
 const filterButtons = document.querySelectorAll(".filter-button");
@@ -93,9 +95,38 @@ logoutButton.addEventListener("click", async () => {
   await supabaseClient.auth.signOut();
 });
 
+photoDrop.addEventListener("click", () => {
+  console.log("[IronProof photos] button click");
+  showPhotoStatus("Opening photo picker...");
+});
+
 photoInput.addEventListener("change", async (event) => {
-  stagedPhotos = await readPhotos([...event.target.files]);
-  renderPhotoPreview(stagedPhotos);
+  const files = [...event.target.files];
+  console.log("[IronProof photos] file selected", {
+    count: files.length,
+    files: files.map((file) => ({ name: file.name, type: file.type, size: file.size })),
+  });
+
+  try {
+    revokePhotoPreviews();
+    stagedPhotos = await readPhotos(files);
+    console.log("[IronProof photos] files staged for upload", {
+      count: stagedPhotos.length,
+      files: stagedPhotos.map((photo) => ({ name: photo.name, size: photo.blob?.size })),
+    });
+    renderPhotoPreview(stagedPhotos);
+    showPhotoStatus(
+      stagedPhotos.length
+        ? `${stagedPhotos.length} photo${stagedPhotos.length === 1 ? "" : "s"} ready. Save the job to upload.`
+        : "No supported image files were selected.",
+    );
+  } catch (error) {
+    console.error("[IronProof photos] file processing failure", error);
+    stagedPhotos = [];
+    renderPhotoPreview(stagedPhotos);
+    showPhotoStatus(`Photo selection failed: ${error.message}`);
+    alert(`Photo selection failed: ${error.message}`);
+  }
 });
 
 form.addEventListener("submit", async (event) => {
@@ -131,16 +162,25 @@ form.addEventListener("submit", async (event) => {
 
   submitButton.disabled = true;
   submitButton.textContent = editingJobId ? "Updating..." : "Saving...";
+  const photosToUpload = [...stagedPhotos];
 
   try {
     const savedJob = editingJobId
       ? await updateJob(editingJobId, payload)
       : await createJob({ ...payload, created_by: currentUser.id });
-    await uploadStagedPhotos(savedJob.id);
-    activeJobId = savedJob.id;
+    const jobIdForPhotos = editingJobId || savedJob?.id;
+    console.log("[IronProof photos] saved job before photo upload", {
+      returnedJobId: savedJob?.id,
+      jobIdForPhotos,
+      stagedPhotoCount: photosToUpload.length,
+    });
+    await uploadStagedPhotos(jobIdForPhotos, photosToUpload);
+    activeJobId = jobIdForPhotos;
     await loadJobs();
     resetForm();
   } catch (error) {
+    console.error("[IronProof photos] job save or photo upload failure", error);
+    showPhotoStatus(`Save/upload failed: ${error.message}`);
     alert(`Supabase save failed: ${error.message}`);
     submitButton.textContent = editingJobId ? "Update job" : "Save job";
   } finally {
@@ -402,36 +442,78 @@ async function loadPhotosForJobs(jobIds) {
   });
 }
 
-async function uploadStagedPhotos(jobId) {
-  if (!stagedPhotos.length) {
+async function uploadStagedPhotos(jobId, photosToUpload = stagedPhotos) {
+  console.log("[IronProof photos] upload function called", {
+    jobId,
+    stagedPhotoCount: photosToUpload.length,
+  });
+
+  if (!jobId) {
+    const error = new Error("Cannot upload photos because the saved job id is missing.");
+    console.error("[IronProof photos] upload failure", error);
+    showPhotoStatus(error.message);
+    throw error;
+  }
+
+  if (!photosToUpload.length) {
+    console.log("[IronProof photos] upload skipped: no staged photos");
     return;
   }
 
-  for (const photo of stagedPhotos) {
+  showPhotoStatus(`Uploading ${photosToUpload.length} photo${photosToUpload.length === 1 ? "" : "s"}...`);
+
+  for (const photo of photosToUpload) {
     const filePath = createPhotoPath(jobId, photo.name);
-    const { error: uploadError } = await supabaseClient.storage
-      .from("job-photos")
-      .upload(filePath, photo.blob, {
-        contentType: photo.blob.type || "image/jpeg",
-        upsert: false,
-      });
-
-    if (uploadError) {
-      throw uploadError;
-    }
-
-    const { error: insertError } = await supabaseClient.from("job_photos").insert({
-      job_id: jobId,
-      uploaded_by: currentUser.id,
-      file_path: filePath,
-      file_name: photo.name,
+    console.log("[IronProof photos] upload started", {
+      jobId,
+      fileName: photo.name,
+      filePath,
+      size: photo.blob?.size,
     });
 
-    if (insertError) {
-      await supabaseClient.storage.from("job-photos").remove([filePath]);
-      throw insertError;
+    try {
+      const { error: uploadError } = await supabaseClient.storage
+        .from("job-photos")
+        .upload(filePath, photo.blob, {
+          contentType: photo.blob.type || "image/jpeg",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { error: insertError } = await supabaseClient.from("job_photos").insert({
+        job_id: jobId,
+        uploaded_by: currentUser.id,
+        file_path: filePath,
+        file_name: photo.name,
+      });
+
+      if (insertError) {
+        await supabaseClient.storage.from("job-photos").remove([filePath]);
+        throw insertError;
+      }
+
+      console.log("[IronProof photos] upload success", {
+        jobId,
+        fileName: photo.name,
+        filePath,
+      });
+    } catch (error) {
+      console.error("[IronProof photos] upload failure", {
+        jobId,
+        fileName: photo.name,
+        filePath,
+        error,
+      });
+      showPhotoStatus(`Photo upload failed for ${photo.name}: ${error.message}`);
+      alert(`Photo upload failed for ${photo.name}: ${error.message}`);
+      throw error;
     }
   }
+
+  showPhotoStatus(`Uploaded ${photosToUpload.length} photo${photosToUpload.length === 1 ? "" : "s"} successfully.`);
 }
 
 function render() {
@@ -663,18 +745,27 @@ function resetForm() {
   submitButton.textContent = "Save job";
   photoInput.value = "";
   renderPhotoPreview(stagedPhotos);
+  showPhotoStatus("");
   setDefaultDate();
 }
 
 async function readPhotos(files) {
   const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+  console.log("[IronProof photos] passing selected files into processing", {
+    selectedCount: files.length,
+    imageCount: imageFiles.length,
+  });
   return Promise.all(imageFiles.map((file) => resizePhoto(file)));
 }
 
 function resizePhoto(file) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const image = new Image();
     const reader = new FileReader();
+
+    image.addEventListener("error", () => {
+      reject(new Error(`Could not read image ${file.name}. Try a JPEG or PNG file.`));
+    });
 
     image.addEventListener("load", () => {
       const maxSize = 1400;
@@ -688,6 +779,11 @@ function resizePhoto(file) {
 
       canvas.toBlob(
         (blob) => {
+          if (!blob) {
+            reject(new Error(`Could not compress image ${file.name}.`));
+            return;
+          }
+
           const name = `${file.name.replace(/\.[^.]+$/, "") || "photo"}.jpg`;
 
           resolve({
@@ -703,6 +799,10 @@ function resizePhoto(file) {
 
     reader.addEventListener("load", () => {
       image.src = reader.result;
+    });
+
+    reader.addEventListener("error", () => {
+      reject(new Error(`Could not load file ${file.name}.`));
     });
 
     reader.readAsDataURL(file);
@@ -733,6 +833,10 @@ function renderPhotoPreview(photos) {
   photoPreview.innerHTML = photos
     .map((photo) => `<img src="${photo.previewUrl}" alt="${escapeHtml(photo.name)}" />`)
     .join("");
+}
+
+function showPhotoStatus(message) {
+  photoStatus.textContent = message;
 }
 
 function getJob(jobId) {

@@ -428,6 +428,11 @@ textarea:focus {
   font-weight: 900;
 }
 
+.photo-status {
+  margin: 10px 0 0;
+  font-weight: 800;
+}
+
 .form-actions,
 .detail-actions {
   flex-wrap: wrap;
