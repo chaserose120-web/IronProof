@@ -143,7 +143,7 @@ create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
   job_type text not null default 'Heavy',
   visibility_type text not null default 'solo',
-  crew_id uuid references public.crews(id) on delete set null,
+  crew_id uuid,
   title text not null,
   status text not null default 'Open',
   work_order text,
@@ -176,7 +176,7 @@ create table if not exists public.jobs (
 alter table public.jobs add column if not exists id uuid default gen_random_uuid();
 alter table public.jobs add column if not exists job_type text default 'Heavy';
 alter table public.jobs add column if not exists visibility_type text default 'solo';
-alter table public.jobs add column if not exists crew_id uuid references public.crews(id) on delete set null;
+alter table public.jobs add column if not exists crew_id uuid;
 alter table public.jobs add column if not exists title text;
 alter table public.jobs add column if not exists status text default 'Open';
 alter table public.jobs add column if not exists work_order text;
@@ -235,6 +235,207 @@ begin
   end if;
 end;
 $$;
+
+do $$
+declare
+  constraint_name text;
+begin
+  select conname
+  into constraint_name
+  from pg_constraint
+  where conrelid = 'public.jobs'::regclass
+    and contype = 'f'
+    and conkey = array[
+      (
+        select attnum
+        from pg_attribute
+        where attrelid = 'public.jobs'::regclass
+          and attname = 'crew_id'
+      )
+    ]::smallint[]
+  limit 1;
+
+  if constraint_name is not null then
+    execute format('alter table public.jobs drop constraint %I', constraint_name);
+  end if;
+end;
+$$;
+
+create or replace function public.generate_job_crew_join_code()
+returns text
+language plpgsql
+as $$
+declare
+  candidate text;
+begin
+  loop
+    candidate := 'JOB-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+    exit when not exists (
+      select 1
+      from public.job_crews
+      where join_code = candidate
+    );
+  end loop;
+
+  return candidate;
+end;
+$$;
+
+create table if not exists public.job_crews (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references public.jobs(id) on delete cascade,
+  join_code text not null default public.generate_job_crew_join_code(),
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.job_crews add column if not exists id uuid default gen_random_uuid();
+alter table public.job_crews add column if not exists job_id uuid references public.jobs(id) on delete cascade;
+alter table public.job_crews add column if not exists join_code text default public.generate_job_crew_join_code();
+alter table public.job_crews add column if not exists created_by uuid references public.profiles(id) on delete set null;
+alter table public.job_crews add column if not exists created_at timestamptz default now();
+alter table public.job_crews alter column join_code set default public.generate_job_crew_join_code();
+alter table public.job_crews alter column created_at set default now();
+
+update public.job_crews
+set join_code = public.generate_job_crew_join_code()
+where join_code is null;
+
+alter table public.job_crews alter column join_code set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_crews'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.job_crews add primary key (id);
+  end if;
+end;
+$$;
+
+create unique index if not exists job_crews_job_id_key
+on public.job_crews (job_id);
+
+create unique index if not exists job_crews_join_code_key
+on public.job_crews (join_code);
+
+create table if not exists public.job_crew_members (
+  id uuid primary key default gen_random_uuid(),
+  job_crew_id uuid not null references public.job_crews(id) on delete cascade,
+  job_id uuid not null references public.jobs(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'crew_worker',
+  created_at timestamptz not null default now()
+);
+
+alter table public.job_crew_members add column if not exists id uuid default gen_random_uuid();
+alter table public.job_crew_members add column if not exists job_crew_id uuid references public.job_crews(id) on delete cascade;
+alter table public.job_crew_members add column if not exists job_id uuid references public.jobs(id) on delete cascade;
+alter table public.job_crew_members add column if not exists user_id uuid references public.profiles(id) on delete cascade;
+alter table public.job_crew_members add column if not exists role text default 'crew_worker';
+alter table public.job_crew_members add column if not exists created_at timestamptz default now();
+alter table public.job_crew_members alter column role set default 'crew_worker';
+alter table public.job_crew_members alter column created_at set default now();
+
+update public.job_crew_members
+set role = 'crew_worker'
+where role is null
+  or role not in ('crew_lead', 'crew_worker', 'supervisor');
+
+alter table public.job_crew_members alter column role set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_crew_members'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.job_crew_members add primary key (id);
+  end if;
+end;
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.job_crew_members'::regclass
+      and conname = 'job_crew_members_role_check'
+  ) then
+    alter table public.job_crew_members
+    add constraint job_crew_members_role_check
+    check (role in ('crew_lead', 'crew_worker', 'supervisor'));
+  end if;
+end;
+$$;
+
+create unique index if not exists job_crew_members_job_crew_id_user_id_key
+on public.job_crew_members (job_crew_id, user_id);
+
+create index if not exists job_crew_members_job_id_idx
+on public.job_crew_members (job_id);
+
+insert into public.job_crews (job_id, created_by)
+select jobs.id, jobs.created_by
+from public.jobs
+where jobs.visibility_type = 'crew'
+  and not exists (
+    select 1
+    from public.job_crews
+    where job_crews.job_id = jobs.id
+  );
+
+insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
+select job_crews.id, jobs.id, jobs.created_by, 'crew_lead'
+from public.jobs
+join public.job_crews on job_crews.job_id = jobs.id
+where jobs.visibility_type = 'crew'
+  and jobs.created_by is not null
+on conflict (job_crew_id, user_id) do nothing;
+
+insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
+select job_crews.id,
+       jobs.id,
+       crew_members.user_id,
+       case
+         when crew_members.role = 'owner' then 'crew_lead'
+         else 'crew_worker'
+       end
+from public.jobs
+join public.job_crews on job_crews.job_id = jobs.id
+join public.crew_members on crew_members.crew_id = jobs.crew_id
+where jobs.visibility_type = 'crew'
+on conflict (job_crew_id, user_id) do nothing;
+
+update public.jobs
+set crew_id = job_crews.id
+from public.job_crews
+where jobs.id = job_crews.job_id
+  and jobs.visibility_type = 'crew';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.jobs'::regclass
+      and conname = 'jobs_crew_id_fkey'
+  ) then
+    alter table public.jobs
+    add constraint jobs_crew_id_fkey
+    foreign key (crew_id) references public.job_crews(id) on delete set null
+    not valid;
+  end if;
+end;
+$$;
+
+alter table public.jobs validate constraint jobs_crew_id_fkey;
 
 create index if not exists jobs_created_by_created_at_idx
 on public.jobs (created_by, created_at desc);
@@ -302,6 +503,35 @@ as $$
   );
 $$;
 
+create or replace function public.get_job_crew_role(target_job_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select job_crew_members.role
+  from public.job_crew_members
+  where job_crew_members.job_id = target_job_id
+    and job_crew_members.user_id = auth.uid()
+  limit 1;
+$$;
+
+create or replace function public.is_job_crew_member(target_job_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.job_crew_members
+    where job_crew_members.job_id = target_job_id
+      and job_crew_members.user_id = auth.uid()
+  );
+$$;
+
 create or replace function public.can_access_job(target_job_id uuid)
 returns boolean
 language sql
@@ -317,8 +547,10 @@ as $$
         (coalesce(jobs.visibility_type, 'solo') = 'solo' and jobs.created_by = auth.uid())
         or (
           jobs.visibility_type = 'crew'
-          and jobs.crew_id is not null
-          and public.is_crew_member(jobs.crew_id)
+          and (
+            jobs.created_by = auth.uid()
+            or public.is_job_crew_member(jobs.id)
+          )
         )
       )
   );
@@ -335,9 +567,151 @@ as $$
     select 1
     from public.jobs
     where jobs.id = target_job_id
-      and jobs.created_by = auth.uid()
+      and (
+        jobs.created_by = auth.uid()
+        or public.get_job_crew_role(jobs.id) in ('crew_lead', 'crew_worker')
+      )
   );
 $$;
+
+create or replace function public.add_job_crew_creator_member()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
+  values (new.id, new.job_id, coalesce(new.created_by, auth.uid()), 'crew_lead')
+  on conflict (job_crew_id, user_id) do nothing;
+
+  update public.jobs
+  set crew_id = new.id,
+      visibility_type = 'crew'
+  where id = new.job_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists add_job_crew_creator_member_after_insert on public.job_crews;
+create trigger add_job_crew_creator_member_after_insert
+after insert on public.job_crews
+for each row execute function public.add_job_crew_creator_member();
+
+create or replace function public.set_job_crew_member_job_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  select job_id into new.job_id
+  from public.job_crews
+  where id = new.job_crew_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists set_job_crew_member_job_id_before_insert on public.job_crew_members;
+create trigger set_job_crew_member_job_id_before_insert
+before insert on public.job_crew_members
+for each row execute function public.set_job_crew_member_job_id();
+
+create or replace function public.join_job_crew(join_code_input text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  crew_record public.job_crews%rowtype;
+begin
+  select *
+  into crew_record
+  from public.job_crews
+  where upper(join_code) = upper(trim(join_code_input));
+
+  if crew_record.id is null then
+    raise exception 'No job crew found for that join code.';
+  end if;
+
+  insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
+  values (crew_record.id, crew_record.job_id, auth.uid(), 'crew_worker')
+  on conflict (job_crew_id, user_id) do nothing;
+end;
+$$;
+
+drop policy if exists "profiles_select_job_crew_members" on public.profiles;
+create policy "profiles_select_job_crew_members"
+on public.profiles
+for select
+to authenticated
+using (
+  id = auth.uid()
+  or exists (
+    select 1
+    from public.job_crew_members current_member
+    join public.job_crew_members visible_member
+      on visible_member.job_crew_id = current_member.job_crew_id
+    where current_member.user_id = auth.uid()
+      and visible_member.user_id = profiles.id
+  )
+);
+
+alter table public.job_crews enable row level security;
+alter table public.job_crew_members enable row level security;
+
+drop policy if exists "job_crews_select_accessible_jobs" on public.job_crews;
+create policy "job_crews_select_accessible_jobs"
+on public.job_crews
+for select
+to authenticated
+using (public.can_access_job(job_id));
+
+drop policy if exists "job_crews_insert_manageable_jobs" on public.job_crews;
+create policy "job_crews_insert_manageable_jobs"
+on public.job_crews
+for insert
+to authenticated
+with check (created_by = auth.uid() and public.can_manage_job(job_id));
+
+drop policy if exists "job_crews_delete_manageable_jobs" on public.job_crews;
+create policy "job_crews_delete_manageable_jobs"
+on public.job_crews
+for delete
+to authenticated
+using (public.can_manage_job(job_id));
+
+drop policy if exists "job_crew_members_select_accessible_jobs" on public.job_crew_members;
+create policy "job_crew_members_select_accessible_jobs"
+on public.job_crew_members
+for select
+to authenticated
+using (public.can_access_job(job_id));
+
+drop policy if exists "job_crew_members_insert_manageable_jobs" on public.job_crew_members;
+create policy "job_crew_members_insert_manageable_jobs"
+on public.job_crew_members
+for insert
+to authenticated
+with check (public.can_manage_job(job_id));
+
+drop policy if exists "job_crew_members_update_manageable_jobs" on public.job_crew_members;
+create policy "job_crew_members_update_manageable_jobs"
+on public.job_crew_members
+for update
+to authenticated
+using (public.can_manage_job(job_id))
+with check (public.can_manage_job(job_id));
+
+drop policy if exists "job_crew_members_delete_manageable_jobs" on public.job_crew_members;
+create policy "job_crew_members_delete_manageable_jobs"
+on public.job_crew_members
+for delete
+to authenticated
+using (public.can_manage_job(job_id) or user_id = auth.uid());
 
 alter table public.crews enable row level security;
 alter table public.crew_members enable row level security;
@@ -403,14 +777,7 @@ create policy "jobs_select_visible"
 on public.jobs
 for select
 to authenticated
-using (
-  (coalesce(visibility_type, 'solo') = 'solo' and created_by = auth.uid())
-  or (
-    visibility_type = 'crew'
-    and crew_id is not null
-    and public.is_crew_member(crew_id)
-  )
-);
+using (public.can_access_job(id));
 
 drop policy if exists "jobs_insert_own" on public.jobs;
 create policy "jobs_insert_own"
@@ -422,11 +789,7 @@ with check (
   and updated_by = auth.uid()
   and (
     (coalesce(visibility_type, 'solo') = 'solo' and crew_id is null)
-    or (
-      visibility_type = 'crew'
-      and crew_id is not null
-      and public.is_crew_member(crew_id)
-    )
+    or visibility_type = 'crew'
   )
 );
 
@@ -435,17 +798,12 @@ create policy "jobs_update_own"
 on public.jobs
 for update
 to authenticated
-using (created_by = auth.uid())
+using (public.can_manage_job(id))
 with check (
-  created_by = auth.uid()
-  and updated_by = auth.uid()
+  updated_by = auth.uid()
   and (
     (coalesce(visibility_type, 'solo') = 'solo' and crew_id is null)
-    or (
-      visibility_type = 'crew'
-      and crew_id is not null
-      and public.is_crew_member(crew_id)
-    )
+    or visibility_type = 'crew'
   )
 );
 
@@ -454,7 +812,7 @@ create policy "jobs_delete_own"
 on public.jobs
 for delete
 to authenticated
-using (created_by = auth.uid());
+using (public.can_manage_job(id));
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -541,7 +899,7 @@ for insert
 to authenticated
 with check (
   uploaded_by = auth.uid()
-  and public.can_access_job(job_id)
+  and public.can_manage_job(job_id)
 );
 
 drop policy if exists "job_photos_delete_own_jobs" on public.job_photos;
@@ -551,7 +909,7 @@ for delete
 to authenticated
 using (
   uploaded_by = auth.uid()
-  and public.can_access_job(job_id)
+  or public.can_manage_job(job_id)
 );
 
 drop policy if exists "storage_job_photos_select_own_folder" on storage.objects;
@@ -692,7 +1050,7 @@ with check (
     select 1
     from public.jobs
     where jobs.id = diagnostic_files.job_id
-      and public.can_access_job(jobs.id)
+      and public.can_manage_job(jobs.id)
       and jobs.job_type = 'Heavy'
   )
 );
@@ -704,7 +1062,7 @@ for delete
 to authenticated
 using (
   uploaded_by = auth.uid()
-  and public.can_access_job(job_id)
+  or public.can_manage_job(job_id)
 );
 
 drop policy if exists "storage_diagnostic_files_select_own_folder" on storage.objects;

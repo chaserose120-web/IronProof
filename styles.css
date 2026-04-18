@@ -619,12 +619,37 @@ textarea:focus {
   background: var(--yellow);
 }
 
+.crew-board-tools {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.crew-board-tools p {
+  margin: 0;
+  font-weight: 800;
+}
+
 .job-list {
   display: grid;
   gap: 10px;
   max-height: 680px;
   overflow: auto;
   padding-right: 4px;
+}
+
+.job-list-section {
+  display: grid;
+  gap: 10px;
+}
+
+.job-list-section h3 {
+  margin: 8px 0 0;
+  font-size: 1.35rem;
 }
 
 .job-card {
@@ -770,6 +795,78 @@ textarea:focus {
   margin-bottom: 12px;
 }
 
+.crew-panel {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.crew-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 260px) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.crew-actions:first-of-type {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.crew-actions p {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+}
+
+.crew-actions code {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(21, 19, 15, 0.08);
+  font-weight: 900;
+}
+
+.crew-members {
+  margin-top: 14px;
+}
+
+.crew-members ul {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 10px 0 0;
+  list-style: none;
+}
+
+.crew-members li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.crew-members li span {
+  display: grid;
+  gap: 2px;
+}
+
+.crew-members small,
+.crew-role {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .copy-output {
   width: 100%;
   min-height: 220px;
@@ -829,5 +926,10 @@ textarea:focus {
 
   .job-title-line {
     flex-direction: column;
+  }
+
+  .crew-actions,
+  .crew-actions:first-of-type {
+    grid-template-columns: 1fr;
   }
 }

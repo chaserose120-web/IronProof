@@ -404,6 +404,16 @@
             <button class="filter-button" type="button" data-filter="Complete">Complete</button>
           </div>
 
+          <div class="crew-board-tools">
+            <strong>Join Crew for This Job</strong>
+            <label>
+              Job crew code
+              <input id="boardJoinCode" type="text" placeholder="JOB-ABC123" />
+            </label>
+            <button class="button secondary compact-button" type="button" id="boardJoinCrewButton">Join crew</button>
+            <p id="crewBoardMessage" aria-live="polite"></p>
+          </div>
+
           <div class="job-list" id="jobList" aria-live="polite"></div>
         </aside>
       </section>

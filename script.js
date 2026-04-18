@@ -17,6 +17,9 @@ const photoModal = document.querySelector("#photoModal");
 const photoModalImage = document.querySelector("#photoModalImage");
 const jobList = document.querySelector("#jobList");
 const searchInput = document.querySelector("#searchInput");
+const boardJoinCode = document.querySelector("#boardJoinCode");
+const boardJoinCrewButton = document.querySelector("#boardJoinCrewButton");
+const crewBoardMessage = document.querySelector("#crewBoardMessage");
 const filterButtons = document.querySelectorAll(".filter-button");
 const detail = document.querySelector("#jobDetail");
 const emptyDetail = document.querySelector("#emptyDetail");
@@ -35,10 +38,11 @@ const supabaseClient =
 
 let currentUser = null;
 let currentProfile = null;
-let currentCrewId = null;
 let jobs = [];
 let jobPhotosByJobId = new Map();
 let diagnosticFilesByJobId = new Map();
+let jobCrewsByJobId = new Map();
+let jobCrewMembersByJobId = new Map();
 let activeFilter = "All";
 let activeJobId = null;
 let editingJobId = null;
@@ -180,15 +184,12 @@ form.addEventListener("submit", async (event) => {
   const jobType = getValue(formData, "jobType") || "Heavy";
   const visibilityType = getValue(formData, "visibilityType") || "solo";
 
-  if (visibilityType === "crew" && !currentCrewId) {
-    showVisibilityMessage("Create or join a crew before saving a Crew job.");
-    return;
-  }
+  const existingJob = editingJobId ? getJob(editingJobId) : null;
 
   const payload = {
     job_type: jobType,
     visibility_type: visibilityType,
-    crew_id: visibilityType === "crew" ? currentCrewId : null,
+    crew_id: visibilityType === "crew" ? existingJob?.crewId || null : null,
     title: getValue(formData, "title"),
     status: getValue(formData, "status") || "Open",
     work_order: getValue(formData, "workOrder"),
@@ -251,6 +252,8 @@ clearFormButton.addEventListener("click", resetForm);
 
 searchInput.addEventListener("input", renderJobList);
 
+boardJoinCrewButton.addEventListener("click", () => joinCrewForJob(boardJoinCode.value));
+
 filterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activeFilter = button.dataset.filter;
@@ -302,7 +305,6 @@ async function handleSession(session) {
   }
 
   currentProfile = await loadProfile(currentUser);
-  currentCrewId = await loadCurrentCrewId();
   setSignedInState();
   await loadJobs();
 }
@@ -319,8 +321,9 @@ function setSignedInState() {
 function setSignedOutState() {
   currentUser = null;
   currentProfile = null;
-  currentCrewId = null;
   jobs = [];
+  jobCrewsByJobId = new Map();
+  jobCrewMembersByJobId = new Map();
   activeJobId = null;
   editingJobId = null;
   authPanel.classList.remove("hidden");
@@ -366,22 +369,6 @@ async function createProfile(user) {
   return data;
 }
 
-async function loadCurrentCrewId() {
-  const { data, error } = await supabaseClient
-    .from("crew_members")
-    .select("crew_id")
-    .eq("user_id", currentUser.id)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    setAuthMessage(`Crew load failed: ${error.message}`);
-    return null;
-  }
-
-  return data?.crew_id || null;
-}
-
 async function loadJobs() {
   if (!supabaseClient) {
     jobs = [];
@@ -413,10 +400,13 @@ async function loadJobs() {
     }
 
     jobs = data.map(normalizeJob);
+    await loadJobCrewsForJobs(jobs.map((job) => job.id));
     await loadPhotosForJobs(jobs.map((job) => job.id));
     await loadDiagnosticFilesForJobs(jobs.map((job) => job.id));
     jobs = jobs.map((job) => ({
       ...job,
+      crew: jobCrewsByJobId.get(job.id) || null,
+      crewMembers: jobCrewMembersByJobId.get(job.id) || [],
       photos: jobPhotosByJobId.get(job.id) || [],
       diagnosticFiles: diagnosticFilesByJobId.get(job.id) || [],
     }));
@@ -445,7 +435,6 @@ async function updateJob(jobId, payload) {
     .from("jobs")
     .update(payload)
     .eq("id", jobId)
-    .eq("created_by", currentUser.id)
     .select()
     .single();
 
@@ -457,11 +446,73 @@ async function updateJob(jobId, payload) {
 }
 
 async function deleteJobRecord(jobId) {
-  const { error } = await supabaseClient.from("jobs").delete().eq("id", jobId).eq("created_by", currentUser.id);
+  const { error } = await supabaseClient.from("jobs").delete().eq("id", jobId);
 
   if (error) {
     throw error;
   }
+}
+
+async function loadJobCrewsForJobs(jobIds) {
+  jobCrewsByJobId = new Map();
+  jobCrewMembersByJobId = new Map();
+
+  if (!jobIds.length) {
+    return;
+  }
+
+  const { data: crews, error: crewError } = await supabaseClient
+    .from("job_crews")
+    .select("id,job_id,join_code,created_by,created_at")
+    .in("job_id", jobIds);
+
+  if (crewError) {
+    throw crewError;
+  }
+
+  crews.forEach((crew) => {
+    jobCrewsByJobId.set(crew.job_id, {
+      id: crew.id,
+      jobId: crew.job_id,
+      joinCode: crew.join_code,
+      createdBy: crew.created_by,
+      createdAt: crew.created_at,
+    });
+  });
+
+  if (!crews.length) {
+    return;
+  }
+
+  const { data: members, error: memberError } = await supabaseClient
+    .from("job_crew_members")
+    .select("id,job_id,job_crew_id,user_id,role,created_at,profiles(display_name,email)")
+    .in(
+      "job_crew_id",
+      crews.map((crew) => crew.id),
+    )
+    .order("created_at", { ascending: true });
+
+  if (memberError) {
+    throw memberError;
+  }
+
+  members.forEach((member) => {
+    const existingMembers = jobCrewMembersByJobId.get(member.job_id) || [];
+    jobCrewMembersByJobId.set(member.job_id, [
+      ...existingMembers,
+      {
+        id: member.id,
+        jobId: member.job_id,
+        jobCrewId: member.job_crew_id,
+        userId: member.user_id,
+        role: member.role,
+        createdAt: member.created_at,
+        displayName: member.profiles?.display_name || member.profiles?.email || member.user_id,
+        email: member.profiles?.email || "",
+      },
+    ]);
+  });
 }
 
 function normalizeJob(job) {
@@ -497,6 +548,8 @@ function normalizeJob(job) {
     createdAt: job.created_at || "",
     createdBy: job.created_by || "",
     updatedBy: job.updated_by || "",
+    crew: jobCrewsByJobId.get(job.id) || null,
+    crewMembers: jobCrewMembersByJobId.get(job.id) || [],
     photos: jobPhotosByJobId.get(job.id) || [],
     diagnosticFiles: diagnosticFilesByJobId.get(job.id) || [],
   };
@@ -757,9 +810,24 @@ function renderJobList() {
     return;
   }
 
+  renderJobListSection("My Solo Jobs", filteredJobs.filter((job) => job.visibilityType !== "crew"));
+  renderJobListSection("Crew Jobs", filteredJobs.filter((job) => job.visibilityType === "crew"));
+}
+
+function renderJobListSection(title, sectionJobs) {
+  const section = document.createElement("section");
+  section.className = "job-list-section";
+  section.innerHTML = `<h3>${escapeHtml(title)}</h3>`;
+
+  if (!sectionJobs.length) {
+    section.insertAdjacentHTML("beforeend", '<div class="empty-list">No jobs here yet.</div>');
+    jobList.append(section);
+    return;
+  }
+
   const template = document.querySelector("#jobCardTemplate");
 
-  filteredJobs.forEach((job) => {
+  sectionJobs.forEach((job) => {
     const card = template.content.firstElementChild.cloneNode(true);
     const status = card.querySelector(".status-pill");
 
@@ -779,8 +847,10 @@ function renderJobList() {
       document.querySelector("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
-    jobList.append(card);
+    section.append(card);
   });
+
+  jobList.append(section);
 }
 
 function renderDetail() {
@@ -794,7 +864,7 @@ function renderDetail() {
 
   emptyDetail.classList.add("hidden");
   detail.classList.remove("hidden");
-  const canManageJob = job.createdBy === currentUser?.id;
+  const canManageJob = canManageCrewJob(job);
   detail.innerHTML = `
     <div class="job-title-line">
       <div>
@@ -807,6 +877,7 @@ function renderDetail() {
     <div class="detail-meta">
       ${metaItem("Job type", job.jobType)}
       ${metaItem("Visibility", getVisibilityLabel(job))}
+      ${job.visibilityType === "crew" ? metaItem("Your crew role", getCurrentUserCrewRoleLabel(job)) : ""}
       ${metaItem("Work order", job.workOrder)}
       ${metaItem("Date", formatDate(job.jobDate))}
       ${metaItem("Customer", job.customerName)}
@@ -820,6 +891,8 @@ function renderDetail() {
       ${job.jobType === "Automotive" ? renderAutomotiveNotes(job) : renderHeavyNotes(job)}
       ${noteBlock("Parts / fluids / tooling", job.parts)}
     </div>
+
+    ${job.visibilityType === "crew" ? renderCrewPanel(job) : ""}
 
     ${
       job.jobType === "Heavy"
@@ -844,7 +917,7 @@ function renderDetail() {
                       <img src="${photo.url}" alt="${escapeHtml(photo.fileName)}" />
                       <figcaption>${escapeHtml(photo.fileName)}</figcaption>
                       ${
-                        photo.uploadedBy === currentUser?.id
+                        canManageJob || photo.uploadedBy === currentUser?.id
                           ? `<button class="photo-delete" type="button" data-photo-id="${photo.id}">Delete</button>`
                           : ""
                       }
@@ -873,6 +946,11 @@ function renderDetail() {
     output.select();
   });
   detail.querySelector("[data-action='delete']")?.addEventListener("click", () => deleteJob(job.id));
+  detail.querySelector("[data-action='create-crew']")?.addEventListener("click", () => createCrewForJob(job.id));
+  detail.querySelector("[data-action='join-crew']")?.addEventListener("click", () => {
+    const input = detail.querySelector("[data-join-code]");
+    joinCrewForJob(input?.value);
+  });
   detail.querySelectorAll(".photo-tile img").forEach((image) => {
     image.addEventListener("click", () => openPhotoModal(image.src, image.alt));
   });
@@ -921,8 +999,8 @@ function setVisibilityType(visibilityType) {
 }
 
 function updateVisibilityMessage(visibilityType) {
-  if (visibilityType === "crew" && !currentCrewId) {
-    showVisibilityMessage("Create or join a crew before saving a Crew job.");
+  if (visibilityType === "crew") {
+    showVisibilityMessage("Crew jobs can have their own job-specific crew after the job is saved.");
     return;
   }
 
@@ -1004,8 +1082,7 @@ async function deletePhoto(photoId) {
       .from("job_photos")
       .delete()
       .eq("id", photo.id)
-      .eq("file_path", photo.filePath)
-      .eq("uploaded_by", currentUser.id);
+      .eq("file_path", photo.filePath);
 
     if (databaseError) {
       throw new Error(`Database delete failed: ${databaseError.message}`);
@@ -1051,8 +1128,7 @@ async function deleteDiagnosticFile(diagnosticId) {
       .from("diagnostic_files")
       .delete()
       .eq("id", file.id)
-      .eq("file_path", file.filePath)
-      .eq("uploaded_by", currentUser.id);
+      .eq("file_path", file.filePath);
 
     if (databaseError) {
       throw new Error(`Database delete failed: ${databaseError.message}`);
@@ -1068,6 +1144,64 @@ async function deleteDiagnosticFile(diagnosticId) {
     });
     showDiagnosticStatus(`Diagnostic delete failed: ${error.message}`);
     alert(`Diagnostic delete failed: ${error.message}`);
+  }
+}
+
+async function createCrewForJob(jobId) {
+  const job = getJob(jobId);
+
+  if (!job || job.visibilityType !== "crew") {
+    return;
+  }
+
+  showVisibilityMessage("Creating job crew...");
+
+  try {
+    const { error } = await supabaseClient.from("job_crews").insert({
+      job_id: jobId,
+      created_by: currentUser.id,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    activeJobId = jobId;
+    await loadJobs();
+    showVisibilityMessage("Crew created for this job.");
+  } catch (error) {
+    showVisibilityMessage(`Crew creation failed: ${error.message}`);
+    alert(`Crew creation failed: ${error.message}`);
+  }
+}
+
+async function joinCrewForJob(joinCode) {
+  const code = String(joinCode || "").trim();
+
+  if (!code) {
+    showVisibilityMessage("Enter a crew join code first.");
+    return;
+  }
+
+  showVisibilityMessage("Joining job crew...");
+
+  try {
+    const { error } = await supabaseClient.rpc("join_job_crew", {
+      join_code_input: code,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    await loadJobs();
+    boardJoinCode.value = "";
+    showVisibilityMessage("Joined the job crew.");
+    showCrewBoardMessage("Joined the job crew.");
+  } catch (error) {
+    showVisibilityMessage(`Join failed: ${error.message}`);
+    showCrewBoardMessage(`Join failed: ${error.message}`);
+    alert(`Join failed: ${error.message}`);
   }
 }
 
@@ -1200,6 +1334,10 @@ function showVisibilityMessage(message) {
   visibilityMessage.textContent = message;
 }
 
+function showCrewBoardMessage(message) {
+  crewBoardMessage.textContent = message;
+}
+
 function getJob(jobId) {
   return jobs.find((job) => job.id === jobId);
 }
@@ -1236,6 +1374,40 @@ function getPrimaryIdentifier(job) {
 
 function getVisibilityLabel(job) {
   return job.visibilityType === "crew" ? "Crew" : "Solo";
+}
+
+function getCurrentUserCrewRole(job) {
+  return job.crewMembers.find((member) => member.userId === currentUser?.id)?.role || "";
+}
+
+function getCurrentUserCrewRoleLabel(job) {
+  const role = getCurrentUserCrewRole(job);
+
+  if (!role && job.createdBy === currentUser?.id) {
+    return job.crew ? "Owner" : "Owner, no crew created";
+  }
+
+  return formatCrewRole(role) || "Not a member";
+}
+
+function canManageCrewJob(job) {
+  if (!job) {
+    return false;
+  }
+
+  if (job.createdBy === currentUser?.id) {
+    return true;
+  }
+
+  return ["crew_lead", "crew_worker"].includes(getCurrentUserCrewRole(job));
+}
+
+function formatCrewRole(role) {
+  return {
+    crew_lead: "Crew Lead",
+    crew_worker: "Crew Worker",
+    supervisor: "Supervisor",
+  }[role] || "";
 }
 
 function renderHeavyMeta(job) {
@@ -1285,7 +1457,7 @@ function renderDiagnosticFiles(job) {
                 <span>${escapeHtml(file.fileType || "Other")}</span>
               </div>
               ${
-                file.uploadedBy === currentUser?.id
+                canManageCrewJob(job) || file.uploadedBy === currentUser?.id
                   ? `<button class="button danger compact-button" type="button" data-diagnostic-id="${file.id}">Delete</button>`
                   : ""
               }
@@ -1294,6 +1466,77 @@ function renderDiagnosticFiles(job) {
         )
         .join("")}
     </div>
+  `;
+}
+
+function renderCrewPanel(job) {
+  const canManageJob = canManageCrewJob(job);
+  const members = job.crewMembers.length
+    ? job.crewMembers
+        .map(
+          (member) => `
+            <li>
+              <span>
+                <strong>${escapeHtml(member.displayName)}</strong>
+                ${member.email ? `<small>${escapeHtml(member.email)}</small>` : ""}
+              </span>
+              <span class="crew-role">${escapeHtml(formatCrewRole(member.role) || member.role)}</span>
+            </li>
+          `,
+        )
+        .join("")
+    : "<li>No crew members have been added yet.</li>";
+
+  return `
+    <section class="crew-panel">
+      <div class="form-section-title">
+        <span>Job Crew</span>
+        <p>This crew is attached only to this job and keeps access after completion.</p>
+      </div>
+
+      ${
+        job.crew
+          ? `
+            <div class="crew-actions">
+              <div>
+                <strong>Join code</strong>
+                <code>${escapeHtml(job.crew.joinCode)}</code>
+                <p>Share this code with technicians or supervisors for this specific job.</p>
+              </div>
+            </div>
+          `
+          : `
+            <div class="crew-actions">
+              <div>
+                <strong>Create Crew for This Job</strong>
+                <p>This creates a job-specific crew and makes you the crew lead.</p>
+              </div>
+              ${
+                canManageJob
+                  ? `<button class="button secondary compact-button" type="button" data-action="create-crew">Create crew</button>`
+                  : ""
+              }
+            </div>
+          `
+      }
+
+      <div class="crew-actions">
+        <div>
+          <strong>Join Crew for This Job</strong>
+          <p>Enter a job-specific join code. New joiners are added as crew workers.</p>
+        </div>
+        <label>
+          Join code
+          <input data-join-code type="text" placeholder="JOB-ABC123" />
+        </label>
+        <button class="button secondary compact-button" type="button" data-action="join-crew">Join crew</button>
+      </div>
+
+      <div class="crew-members">
+        <strong>Current Crew Members</strong>
+        <ul>${members}</ul>
+      </div>
+    </section>
   `;
 }
 
