@@ -284,6 +284,7 @@ $$;
 create table if not exists public.job_crews (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references public.jobs(id) on delete cascade,
+  name text not null,
   join_code text not null default public.generate_job_crew_join_code(),
   created_by uuid references public.profiles(id) on delete set null,
   created_at timestamptz not null default now()
@@ -291,6 +292,7 @@ create table if not exists public.job_crews (
 
 alter table public.job_crews add column if not exists id uuid default gen_random_uuid();
 alter table public.job_crews add column if not exists job_id uuid references public.jobs(id) on delete cascade;
+alter table public.job_crews add column if not exists name text;
 alter table public.job_crews add column if not exists join_code text default public.generate_job_crew_join_code();
 alter table public.job_crews add column if not exists created_by uuid references public.profiles(id) on delete set null;
 alter table public.job_crews add column if not exists created_at timestamptz default now();
@@ -301,6 +303,17 @@ update public.job_crews
 set join_code = public.generate_job_crew_join_code()
 where join_code is null;
 
+update public.job_crews
+set name = coalesce(nullif(trim(jobs.title), '') || ' Crew', 'Crew for Job ' || job_crews.job_id::text)
+from public.jobs
+where job_crews.job_id = jobs.id
+  and job_crews.name is null;
+
+update public.job_crews
+set name = 'Crew for Job ' || job_id::text
+where name is null;
+
+alter table public.job_crews alter column name set not null;
 alter table public.job_crews alter column join_code set not null;
 
 do $$
@@ -381,8 +394,10 @@ on public.job_crew_members (job_crew_id, user_id);
 create index if not exists job_crew_members_job_id_idx
 on public.job_crew_members (job_id);
 
-insert into public.job_crews (job_id, created_by)
-select jobs.id, jobs.created_by
+insert into public.job_crews (job_id, name, created_by)
+select jobs.id,
+       coalesce(nullif(trim(jobs.title), '') || ' Crew', 'Crew for Job ' || jobs.id::text),
+       jobs.created_by
 from public.jobs
 where jobs.visibility_type = 'crew'
   and not exists (

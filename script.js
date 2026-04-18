@@ -463,7 +463,7 @@ async function loadJobCrewsForJobs(jobIds) {
 
   const { data: crews, error: crewError } = await supabaseClient
     .from("job_crews")
-    .select("id,job_id,join_code,created_by,created_at")
+    .select("id,job_id,name,join_code,created_by,created_at")
     .in("job_id", jobIds);
 
   if (crewError) {
@@ -474,6 +474,7 @@ async function loadJobCrewsForJobs(jobIds) {
     jobCrewsByJobId.set(crew.job_id, {
       id: crew.id,
       jobId: crew.job_id,
+      name: crew.name,
       joinCode: crew.join_code,
       createdBy: crew.created_by,
       createdAt: crew.created_at,
@@ -1159,6 +1160,7 @@ async function createCrewForJob(jobId) {
   try {
     const { error } = await supabaseClient.from("job_crews").insert({
       job_id: jobId,
+      name: createJobCrewName(job),
       created_by: currentUser.id,
     });
 
@@ -1306,6 +1308,16 @@ function createDiagnosticFilePath(jobId, fileName) {
     : `diagnostic-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   return `${currentUser.id}/${jobId}/${id}-${safeName || "diagnostic-file"}`;
+}
+
+function createJobCrewName(job) {
+  const title = String(job?.title || "").trim();
+
+  if (title) {
+    return `${title} Crew`;
+  }
+
+  return `Crew for Job ${job?.id || "Unknown"}`;
 }
 
 function revokePhotoPreviews() {
@@ -1499,6 +1511,9 @@ function renderCrewPanel(job) {
           ? `
             <div class="crew-actions">
               <div>
+                <strong>${escapeHtml(job.crew.name || createJobCrewName(job))}</strong>
+                <p>Job-specific crew</p>
+                <br />
                 <strong>Join code</strong>
                 <code>${escapeHtml(job.crew.joinCode)}</code>
                 <p>Share this code with technicians or supervisors for this specific job.</p>
