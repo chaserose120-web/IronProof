@@ -1167,9 +1167,11 @@ async function createCrewForJob(jobId) {
   showVisibilityMessage("Creating job crew...");
 
   try {
+    const joinCode = createJobCrewJoinCode();
     const { error } = await supabaseClient.from("job_crews").insert({
       job_id: jobId,
       name: createJobCrewName(job),
+      join_code: joinCode,
       created_by: currentUser.id,
     });
 
@@ -1327,6 +1329,22 @@ function createJobCrewName(job) {
   }
 
   return `Crew for Job ${job?.id || "Unknown"}`;
+}
+
+function createJobCrewJoinCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const randomValues = new Uint8Array(4);
+
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(randomValues);
+  } else {
+    randomValues.forEach((_, index) => {
+      randomValues[index] = Math.floor(Math.random() * 256);
+    });
+  }
+
+  const suffix = [...randomValues].map((value) => alphabet[value % alphabet.length]).join("");
+  return `CREW-${suffix}`;
 }
 
 function revokePhotoPreviews() {
