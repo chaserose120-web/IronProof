@@ -1168,17 +1168,23 @@ async function createCrewForJob(jobId) {
 
   try {
     const joinCode = createJobCrewJoinCode();
-    const { error } = await supabaseClient.from("job_crews").insert({
+    const crewPayload = {
       job_id: jobId,
       name: createJobCrewName(job),
       join_code: joinCode,
       created_by: currentUser.id,
-    });
+    };
+    const { data: createdCrew, error } = await supabaseClient
+      .from("job_crews")
+      .insert(crewPayload)
+      .select("id,job_id,name,join_code,created_by,created_at")
+      .single();
 
     if (error) {
       throw error;
     }
 
+    await ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode);
     activeJobId = jobId;
     await loadJobs();
     showVisibilityMessage("Crew created for this job.");
@@ -1186,6 +1192,49 @@ async function createCrewForJob(jobId) {
     showVisibilityMessage(`Crew creation failed: ${error.message}`);
     alert(`Crew creation failed: ${error.message}`);
   }
+}
+
+async function ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode) {
+  if (createdCrew?.join_code) {
+    return createdCrew;
+  }
+
+  const { data: reloadedCrew, error: reloadError } = await supabaseClient
+    .from("job_crews")
+    .select("id,job_id,name,join_code,created_by,created_at")
+    .eq("job_id", jobId)
+    .maybeSingle();
+
+  if (reloadError) {
+    throw reloadError;
+  }
+
+  if (reloadedCrew?.join_code) {
+    return reloadedCrew;
+  }
+
+  const crewId = createdCrew?.id || reloadedCrew?.id;
+
+  if (!crewId) {
+    throw new Error("Crew was created, but IronProof could not reload it to confirm the join code.");
+  }
+
+  const { data: repairedCrew, error: repairError } = await supabaseClient
+    .from("job_crews")
+    .update({ join_code: joinCode })
+    .eq("id", crewId)
+    .select("id,job_id,name,join_code,created_by,created_at")
+    .single();
+
+  if (repairError) {
+    throw repairError;
+  }
+
+  if (!repairedCrew?.join_code) {
+    throw new Error("Crew was created, but Supabase returned an empty join code after repair.");
+  }
+
+  return repairedCrew;
 }
 
 async function joinCrewForJob(joinCode) {
