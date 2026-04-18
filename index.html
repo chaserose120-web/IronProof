@@ -114,128 +114,143 @@
             </p>
           </div>
 
-          <div class="form-section-title">
-            <span>Workflow</span>
-            <p>Select the job type before filling out unit-specific details.</p>
-          </div>
-
-          <div class="job-type-switch" aria-label="Job type">
-            <label>
-              <input type="radio" name="jobType" value="Heavy" checked />
-              Heavy equipment
-            </label>
-            <label>
-              <input type="radio" name="jobType" value="Automotive" />
-              Automotive
-            </label>
-          </div>
-
-          <div class="form-section-title">
-            <span>Visibility</span>
-            <p>Choose whether this job is private to you or shared with your crew.</p>
-          </div>
-
-          <div class="visibility-switch" aria-label="Job visibility">
-            <label>
-              <input type="radio" name="visibilityType" value="solo" checked />
-              Solo
-            </label>
-            <label>
-              <input type="radio" name="visibilityType" value="crew" />
-              Crew
-            </label>
-          </div>
-
-          <p class="visibility-message" id="visibilityMessage" aria-live="polite"></p>
-
-          <div class="form-section-title">
-            <span>Shared job details</span>
-            <p>These fields apply to both Heavy and Automotive work.</p>
-          </div>
-
-          <div class="form-grid">
-            <label>
-              Job title
-              <input id="title" name="title" type="text" placeholder="Example: Hydraulic leak or brake concern" required />
-            </label>
-
-            <label>
-              Status
-              <select id="status" name="status">
-                <option>Open</option>
-                <option>Diagnosing</option>
-                <option>Waiting on parts</option>
-                <option>Needs approval</option>
-                <option>Complete</option>
-              </select>
-            </label>
-
-            <label>
-              Work order
-              <input id="workOrder" name="workOrder" type="text" placeholder="WO-10482" />
-            </label>
-
-            <label>
-              Date
-              <input id="jobDate" name="jobDate" type="date" />
-            </label>
-          </div>
-
-          <div class="form-section-title">
-            <span>Customer information</span>
-            <p>Use this for the person or company tied to the job.</p>
-          </div>
-
-          <div class="form-grid three">
-            <label>
-              Customer name
-              <input id="customerName" name="customerName" type="text" placeholder="Customer name" />
-            </label>
-
-            <label>
-              Customer phone
-              <input id="customerPhone" name="customerPhone" type="tel" placeholder="555-123-4567" />
-            </label>
-
-            <label>
-              Customer email
-              <input id="customerEmail" name="customerEmail" type="email" placeholder="customer@example.com" />
-            </label>
-          </div>
-
-          <div class="job-type-fields" data-job-type-fields="Heavy">
+          <section class="form-section">
             <div class="form-section-title">
-              <span>Heavy equipment details</span>
-              <p>Machine identification, location, and hour meter information.</p>
+              <span>Customer Info</span>
+              <p>Who the work is for and how to reach them.</p>
+            </div>
+
+            <div class="form-grid three">
+              <label>
+                Customer name
+                <input id="customerName" name="customerName" type="text" placeholder="Customer name" />
+              </label>
+
+              <label>
+                Customer phone
+                <input id="customerPhone" name="customerPhone" type="tel" placeholder="555-123-4567" />
+              </label>
+
+              <label>
+                Customer email
+                <input id="customerEmail" name="customerEmail" type="email" placeholder="customer@example.com" />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <div class="form-section-title">
+              <span>Job Setup</span>
+              <p>Select the workflow, status, date, and core work order details.</p>
+            </div>
+
+            <div class="job-type-switch" aria-label="Job type">
+              <label>
+                <input type="radio" name="jobType" value="Heavy" checked />
+                <span>
+                  <strong>Heavy</strong>
+                  <small>Equipment, machines, field service</small>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="jobType" value="Automotive" />
+                <span>
+                  <strong>Automotive</strong>
+                  <small>Cars, trucks, vans, light duty</small>
+                </span>
+              </label>
             </div>
 
             <div class="form-grid">
-            <label>
-              Machine / equipment
-              <input id="machine" name="machine" type="text" placeholder="Cat 980M Loader" />
-            </label>
+              <label>
+                Job title
+                <input id="title" name="title" type="text" placeholder="Example: Hydraulic leak or brake concern" required />
+              </label>
 
-            <label>
-              Serial number
-              <input id="serial" name="serial" type="text" placeholder="CAT0980M..." />
-            </label>
+              <label>
+                Status
+                <select id="status" name="status">
+                  <option>Open</option>
+                  <option>Diagnosing</option>
+                  <option>Waiting on parts</option>
+                  <option>Needs approval</option>
+                  <option>Complete</option>
+                </select>
+              </label>
 
-            <label>
-              Jobsite / location
-              <input id="customer" name="customer" type="text" placeholder="Mine, shop, yard, or jobsite" />
-            </label>
+              <label>
+                Work order
+                <input id="workOrder" name="workOrder" type="text" placeholder="WO-10482" />
+              </label>
 
-            <label>
-              Hours / meter
-              <input id="meter" name="meter" type="text" placeholder="8,420 hrs" />
-            </label>
+              <label>
+                Date
+                <input id="jobDate" name="jobDate" type="date" />
+              </label>
             </div>
-          </div>
 
-          <div class="job-type-fields hidden" data-job-type-fields="Automotive">
+            <label>
+              Job summary / notes
+              <textarea
+                id="summary"
+                name="summary"
+                rows="3"
+                placeholder="Short overview of the job, request, failure, or work performed."
+                required
+              ></textarea>
+            </label>
+          </section>
+
+          <section class="form-section job-type-fields" data-job-type-fields="Heavy">
             <div class="form-section-title">
-              <span>Automotive vehicle details</span>
-              <p>Vehicle identification and mileage information.</p>
+              <span>Heavy Details</span>
+              <p>Machine identification, hour meter, complaint, cause, and correction.</p>
+            </div>
+
+            <div class="form-grid">
+              <label>
+                Machine / equipment
+                <input id="machine" name="machine" type="text" placeholder="Cat 980M Loader" />
+              </label>
+
+              <label>
+                Serial number
+                <input id="serial" name="serial" type="text" placeholder="CAT0980M..." />
+              </label>
+
+              <label>
+                Jobsite / location
+                <input id="customer" name="customer" type="text" placeholder="Mine, shop, yard, or jobsite" />
+              </label>
+
+              <label>
+                Hours / meter
+                <input id="meter" name="meter" type="text" placeholder="8,420 hrs" />
+              </label>
+            </div>
+
+            <div class="form-grid three">
+              <label>
+                Complaint
+                <textarea id="complaint" name="complaint" rows="4" placeholder="What was reported?"></textarea>
+              </label>
+
+              <label>
+                Cause
+                <textarea id="cause" name="cause" rows="4" placeholder="What did you find?"></textarea>
+              </label>
+
+              <label>
+                Correction
+                <textarea id="correction" name="correction" rows="4" placeholder="What did you repair or recommend?"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section job-type-fields hidden" data-job-type-fields="Automotive">
+            <div class="form-section-title">
+              <span>Automotive Details</span>
+              <p>Vehicle identification, mileage, concern, diagnosis, and repair performed.</p>
             </div>
 
             <div class="form-grid">
@@ -264,53 +279,6 @@
                 <input id="mileage" name="mileage" type="text" placeholder="142,000 mi" />
               </label>
             </div>
-          </div>
-
-          <div class="form-section-title">
-            <span>Summary and notes</span>
-            <p>Capture the story of the job in a way you can trust later.</p>
-          </div>
-
-          <label>
-            Job summary / notes
-            <textarea
-              id="summary"
-              name="summary"
-              rows="3"
-              placeholder="Short overview of the job, request, failure, or work performed."
-              required
-            ></textarea>
-          </label>
-
-          <div class="job-type-fields" data-job-type-fields="Heavy">
-            <div class="form-section-title">
-              <span>Heavy diagnostic record</span>
-              <p>Use complaint, cause, and correction for equipment service documentation.</p>
-            </div>
-
-            <div class="form-grid three">
-              <label>
-                Complaint
-                <textarea id="complaint" name="complaint" rows="4" placeholder="What was reported?"></textarea>
-              </label>
-
-              <label>
-                Cause
-                <textarea id="cause" name="cause" rows="4" placeholder="What did you find?"></textarea>
-              </label>
-
-              <label>
-                Correction
-                <textarea id="correction" name="correction" rows="4" placeholder="What did you repair or recommend?"></textarea>
-              </label>
-            </div>
-          </div>
-
-          <div class="job-type-fields hidden" data-job-type-fields="Automotive">
-            <div class="form-section-title">
-              <span>Automotive diagnostic record</span>
-              <p>Use concern, diagnosis, and repair performed for vehicle service documentation.</p>
-            </div>
 
             <div class="form-grid three">
               <label>
@@ -328,19 +296,25 @@
                 <textarea id="repairPerformed" name="repairPerformed" rows="4" placeholder="What repair was completed?"></textarea>
               </label>
             </div>
-          </div>
+          </section>
 
-          <label>
-            Parts, fluids, tools, or recommendations
-            <textarea
-              id="parts"
-              name="parts"
-              rows="3"
-              placeholder="Part numbers, fluids added, tooling used, measurements, codes, recommendations, etc."
-            ></textarea>
-          </label>
+          <section class="form-section">
+            <div class="form-section-title">
+              <span>Photos</span>
+              <p>Add proof photos for condition, diagnostics, failed parts, and completed work.</p>
+            </div>
 
-          <div class="job-type-fields" data-job-type-fields="Heavy">
+            <label class="photo-drop">
+              <input id="photos" name="photos" type="file" accept="image/*" multiple />
+              <span>Add job photos</span>
+              <small>Before, during, after, failed parts, codes, leaks, damage, or final work proof.</small>
+            </label>
+
+            <div class="preview-grid" id="photoPreview" aria-live="polite"></div>
+            <p class="photo-status" id="photoStatus" aria-live="polite"></p>
+          </section>
+
+          <section class="form-section job-type-fields" data-job-type-fields="Heavy">
             <div class="form-section-title">
               <span>Diagnostics</span>
               <p>Attach reports or data files from diagnostic tools for this Heavy job.</p>
@@ -364,26 +338,55 @@
             </div>
 
             <p class="file-status" id="diagnosticStatus" aria-live="polite"></p>
-          </div>
+          </section>
 
-          <div class="form-section-title">
-            <span>Photos</span>
-            <p>Add proof photos for condition, diagnostics, failed parts, and completed work.</p>
-          </div>
+          <section class="form-section">
+            <div class="form-section-title">
+              <span>Crew / Visibility</span>
+              <p>Choose whether this job stays private or can be shared with a job-specific crew.</p>
+            </div>
 
-          <label class="photo-drop">
-            <input id="photos" name="photos" type="file" accept="image/*" multiple />
-            <span>Add job photos</span>
-            <small>Before, during, after, failed parts, codes, leaks, damage, or final work proof.</small>
-          </label>
+            <div class="visibility-switch" aria-label="Job visibility">
+              <label>
+                <input type="radio" name="visibilityType" value="solo" checked />
+                <span>
+                  <strong>Solo</strong>
+                  <small>Private to you</small>
+                </span>
+              </label>
+              <label>
+                <input type="radio" name="visibilityType" value="crew" />
+                <span>
+                  <strong>Crew</strong>
+                  <small>Share with a job crew</small>
+                </span>
+              </label>
+            </div>
 
-          <div class="preview-grid" id="photoPreview" aria-live="polite"></div>
-          <p class="photo-status" id="photoStatus" aria-live="polite"></p>
+            <p class="visibility-message" id="visibilityMessage" aria-live="polite"></p>
+          </section>
 
-          <div class="form-actions">
-            <button class="button primary" type="submit" id="submitButton">Save job</button>
-            <button class="button secondary" type="button" id="clearFormButton">Clear form</button>
-          </div>
+          <section class="form-section actions-section">
+            <div class="form-section-title">
+              <span>Actions</span>
+              <p>Save the job record, then add crew members, photos, and diagnostics as needed.</p>
+            </div>
+
+            <label>
+              Parts, fluids, tools, or recommendations
+              <textarea
+                id="parts"
+                name="parts"
+                rows="3"
+                placeholder="Part numbers, fluids added, tooling used, measurements, codes, recommendations, etc."
+              ></textarea>
+            </label>
+
+            <div class="form-actions">
+              <button class="button primary" type="submit" id="submitButton">Save job</button>
+              <button class="button secondary" type="button" id="clearFormButton">Clear form</button>
+            </div>
+          </section>
         </form>
 
         <aside class="panel job-board" id="jobs">
