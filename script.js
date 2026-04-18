@@ -1168,6 +1168,10 @@ async function createCrewForJob(jobId) {
 
   try {
     const joinCode = createJobCrewJoinCode();
+    if (!joinCode) {
+      throw new Error("IronProof could not generate a crew join code.");
+    }
+
     const crewPayload = {
       job_id: jobId,
       name: createJobCrewName(job),
@@ -1184,8 +1188,10 @@ async function createCrewForJob(jobId) {
       throw error;
     }
 
-    await ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode);
+    const savedCrew = await ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode);
+    applyCreatedCrewToJob(jobId, savedCrew);
     activeJobId = jobId;
+    renderDetail();
     await loadJobs();
     showVisibilityMessage("Crew created for this job.");
   } catch (error) {
@@ -1235,6 +1241,23 @@ async function ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode) {
   }
 
   return repairedCrew;
+}
+
+function applyCreatedCrewToJob(jobId, crew) {
+  if (!crew?.join_code) {
+    return;
+  }
+
+  const normalizedCrew = {
+    id: crew.id,
+    jobId: crew.job_id,
+    name: crew.name,
+    joinCode: crew.join_code,
+    createdBy: crew.created_by,
+    createdAt: crew.created_at,
+  };
+  jobCrewsByJobId.set(jobId, normalizedCrew);
+  jobs = jobs.map((job) => (job.id === jobId ? { ...job, crew: normalizedCrew, crewId: crew.id } : job));
 }
 
 async function joinCrewForJob(joinCode) {
