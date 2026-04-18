@@ -309,14 +309,16 @@ label {
   letter-spacing: 0.01em;
 }
 
-.job-type-switch {
+.job-type-switch,
+.visibility-switch {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 16px;
 }
 
-.job-type-switch label {
+.job-type-switch label,
+.visibility-switch label {
   align-items: center;
   display: flex;
   gap: 8px;
@@ -327,9 +329,15 @@ label {
   background: rgba(255, 255, 255, 0.34);
 }
 
-.job-type-switch input {
+.job-type-switch input,
+.visibility-switch input {
   width: auto;
   min-height: auto;
+}
+
+.visibility-message {
+  margin: -4px 0 16px;
+  font-weight: 800;
 }
 
 .form-section-title {

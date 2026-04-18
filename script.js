@@ -24,6 +24,8 @@ const submitButton = document.querySelector("#submitButton");
 const clearFormButton = document.querySelector("#clearFormButton");
 const jobTypeInputs = document.querySelectorAll("input[name='jobType']");
 const jobTypeFields = document.querySelectorAll("[data-job-type-fields]");
+const visibilityInputs = document.querySelectorAll("input[name='visibilityType']");
+const visibilityMessage = document.querySelector("#visibilityMessage");
 
 const supabaseConfig = window.IRONPROOF_SUPABASE || {};
 const supabaseClient =
@@ -33,6 +35,7 @@ const supabaseClient =
 
 let currentUser = null;
 let currentProfile = null;
+let currentCrewId = null;
 let jobs = [];
 let jobPhotosByJobId = new Map();
 let diagnosticFilesByJobId = new Map();
@@ -175,8 +178,17 @@ form.addEventListener("submit", async (event) => {
 
   const formData = new FormData(form);
   const jobType = getValue(formData, "jobType") || "Heavy";
+  const visibilityType = getValue(formData, "visibilityType") || "solo";
+
+  if (visibilityType === "crew" && !currentCrewId) {
+    showVisibilityMessage("Create or join a crew before saving a Crew job.");
+    return;
+  }
+
   const payload = {
     job_type: jobType,
+    visibility_type: visibilityType,
+    crew_id: visibilityType === "crew" ? currentCrewId : null,
     title: getValue(formData, "title"),
     status: getValue(formData, "status") || "Open",
     work_order: getValue(formData, "workOrder"),
@@ -253,6 +265,12 @@ jobTypeInputs.forEach((input) => {
   });
 });
 
+visibilityInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    updateVisibilityMessage(input.value);
+  });
+});
+
 async function initializeAuth() {
   if (!supabaseClient) {
     setSignedOutState();
@@ -284,6 +302,7 @@ async function handleSession(session) {
   }
 
   currentProfile = await loadProfile(currentUser);
+  currentCrewId = await loadCurrentCrewId();
   setSignedInState();
   await loadJobs();
 }
@@ -300,6 +319,7 @@ function setSignedInState() {
 function setSignedOutState() {
   currentUser = null;
   currentProfile = null;
+  currentCrewId = null;
   jobs = [];
   activeJobId = null;
   editingJobId = null;
@@ -346,6 +366,22 @@ async function createProfile(user) {
   return data;
 }
 
+async function loadCurrentCrewId() {
+  const { data, error } = await supabaseClient
+    .from("crew_members")
+    .select("crew_id")
+    .eq("user_id", currentUser.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    setAuthMessage(`Crew load failed: ${error.message}`);
+    return null;
+  }
+
+  return data?.crew_id || null;
+}
+
 async function loadJobs() {
   if (!supabaseClient) {
     jobs = [];
@@ -368,9 +404,8 @@ async function loadJobs() {
     const { data, error } = await supabaseClient
       .from("jobs")
       .select(
-        "id,job_type,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by",
+        "id,job_type,visibility_type,crew_id,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by",
       )
-      .eq("created_by", currentUser.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -433,6 +468,8 @@ function normalizeJob(job) {
   return {
     id: job.id,
     jobType: job.job_type || "Heavy",
+    visibilityType: job.visibility_type || "solo",
+    crewId: job.crew_id || "",
     title: job.title || "",
     status: job.status || "Open",
     workOrder: job.work_order || "",
@@ -692,6 +729,7 @@ function renderJobList() {
     const haystack = [
       job.title,
       job.status,
+      getVisibilityLabel(job),
       job.workOrder,
       job.jobDate,
       job.customerName,
@@ -730,7 +768,7 @@ function renderJobList() {
     status.textContent = job.status;
     status.className = `status-pill ${job.status.split(" ")[0]}`;
     card.querySelector("strong").textContent = job.title;
-    card.querySelector("small").textContent = [job.workOrder, getPrimaryUnitLabel(job), getPrimaryIdentifier(job)]
+    card.querySelector("small").textContent = [getVisibilityLabel(job), job.workOrder, getPrimaryUnitLabel(job), getPrimaryIdentifier(job)]
       .filter(Boolean)
       .join(" | ");
     card.querySelector("p").textContent = job.summary;
@@ -756,6 +794,7 @@ function renderDetail() {
 
   emptyDetail.classList.add("hidden");
   detail.classList.remove("hidden");
+  const canManageJob = job.createdBy === currentUser?.id;
   detail.innerHTML = `
     <div class="job-title-line">
       <div>
@@ -767,6 +806,7 @@ function renderDetail() {
 
     <div class="detail-meta">
       ${metaItem("Job type", job.jobType)}
+      ${metaItem("Visibility", getVisibilityLabel(job))}
       ${metaItem("Work order", job.workOrder)}
       ${metaItem("Date", formatDate(job.jobDate))}
       ${metaItem("Customer", job.customerName)}
@@ -803,7 +843,11 @@ function renderDetail() {
                     <figure class="photo-tile">
                       <img src="${photo.url}" alt="${escapeHtml(photo.fileName)}" />
                       <figcaption>${escapeHtml(photo.fileName)}</figcaption>
-                      <button class="photo-delete" type="button" data-photo-id="${photo.id}">Delete</button>
+                      ${
+                        photo.uploadedBy === currentUser?.id
+                          ? `<button class="photo-delete" type="button" data-photo-id="${photo.id}">Delete</button>`
+                          : ""
+                      }
                     </figure>
                   `,
                 )
@@ -814,21 +858,21 @@ function renderDetail() {
     </div>
 
     <div class="detail-actions">
-      <button class="button primary" type="button" data-action="edit">Edit job</button>
+      ${canManageJob ? `<button class="button primary" type="button" data-action="edit">Edit job</button>` : ""}
       <button class="button secondary" type="button" data-action="copy">Show copy-ready report</button>
-      <button class="button danger" type="button" data-action="delete">Delete job</button>
+      ${canManageJob ? `<button class="button danger" type="button" data-action="delete">Delete job</button>` : ""}
     </div>
 
     <textarea class="copy-output hidden" readonly>${escapeHtml(buildReport(job))}</textarea>
   `;
 
-  detail.querySelector("[data-action='edit']").addEventListener("click", () => editJob(job.id));
+  detail.querySelector("[data-action='edit']")?.addEventListener("click", () => editJob(job.id));
   detail.querySelector("[data-action='copy']").addEventListener("click", () => {
     const output = detail.querySelector(".copy-output");
     output.classList.toggle("hidden");
     output.select();
   });
-  detail.querySelector("[data-action='delete']").addEventListener("click", () => deleteJob(job.id));
+  detail.querySelector("[data-action='delete']")?.addEventListener("click", () => deleteJob(job.id));
   detail.querySelectorAll(".photo-tile img").forEach((image) => {
     image.addEventListener("click", () => openPhotoModal(image.src, image.alt));
   });
@@ -868,6 +912,23 @@ function setJobType(jobType) {
   updateJobTypeFields(nextJobType);
 }
 
+function setVisibilityType(visibilityType) {
+  const nextVisibilityType = visibilityType || "solo";
+  visibilityInputs.forEach((input) => {
+    input.checked = input.value === nextVisibilityType;
+  });
+  updateVisibilityMessage(nextVisibilityType);
+}
+
+function updateVisibilityMessage(visibilityType) {
+  if (visibilityType === "crew" && !currentCrewId) {
+    showVisibilityMessage("Create or join a crew before saving a Crew job.");
+    return;
+  }
+
+  showVisibilityMessage("");
+}
+
 function editJob(jobId) {
   const job = getJob(jobId);
   editingJobId = jobId;
@@ -875,6 +936,7 @@ function editJob(jobId) {
   stagedPhotos = [];
   renderPhotoPreview(stagedPhotos);
   setJobType(job.jobType);
+  setVisibilityType(job.visibilityType);
 
   Object.entries(job).forEach(([key, value]) => {
     const input = form.elements[key];
@@ -1022,8 +1084,10 @@ function resetForm() {
   renderPhotoPreview(stagedPhotos);
   showPhotoStatus("");
   showDiagnosticStatus("");
+  showVisibilityMessage("");
   setDefaultDate();
   setJobType("Heavy");
+  setVisibilityType("solo");
 }
 
 async function readPhotos(files) {
@@ -1132,6 +1196,10 @@ function showDiagnosticStatus(message) {
   diagnosticStatus.textContent = message;
 }
 
+function showVisibilityMessage(message) {
+  visibilityMessage.textContent = message;
+}
+
 function getJob(jobId) {
   return jobs.find((job) => job.id === jobId);
 }
@@ -1164,6 +1232,10 @@ function getPrimaryUnitLabel(job) {
 
 function getPrimaryIdentifier(job) {
   return job.jobType === "Automotive" ? job.vin : job.serial;
+}
+
+function getVisibilityLabel(job) {
+  return job.visibilityType === "crew" ? "Crew" : "Solo";
 }
 
 function renderHeavyMeta(job) {
@@ -1212,7 +1284,11 @@ function renderDiagnosticFiles(job) {
                 </a>
                 <span>${escapeHtml(file.fileType || "Other")}</span>
               </div>
-              <button class="button danger compact-button" type="button" data-diagnostic-id="${file.id}">Delete</button>
+              ${
+                file.uploadedBy === currentUser?.id
+                  ? `<button class="button danger compact-button" type="button" data-diagnostic-id="${file.id}">Delete</button>`
+                  : ""
+              }
             </div>
           `,
         )
@@ -1259,6 +1335,7 @@ function buildReport(job) {
   return [
     `Job: ${job.title}`,
     `Job Type: ${job.jobType}`,
+    `Visibility: ${getVisibilityLabel(job)}`,
     `Status: ${job.status}`,
     `Work Order: ${job.workOrder || "N/A"}`,
     `Date: ${formatDate(job.jobDate) || "N/A"}`,

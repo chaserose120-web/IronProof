@@ -56,9 +56,94 @@ create trigger on_auth_user_created_create_profile
 after insert on auth.users
 for each row execute function public.handle_new_user_profile();
 
+create table if not exists public.crews (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.crews add column if not exists id uuid default gen_random_uuid();
+alter table public.crews add column if not exists name text;
+alter table public.crews add column if not exists created_by uuid references public.profiles(id) on delete set null;
+alter table public.crews add column if not exists created_at timestamptz default now();
+alter table public.crews alter column created_at set default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.crews'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.crews add primary key (id);
+  end if;
+end;
+$$;
+
+create table if not exists public.crew_members (
+  id uuid primary key default gen_random_uuid(),
+  crew_id uuid not null references public.crews(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'member',
+  created_at timestamptz not null default now()
+);
+
+alter table public.crew_members add column if not exists id uuid default gen_random_uuid();
+alter table public.crew_members add column if not exists crew_id uuid references public.crews(id) on delete cascade;
+alter table public.crew_members add column if not exists user_id uuid references public.profiles(id) on delete cascade;
+alter table public.crew_members add column if not exists role text default 'member';
+alter table public.crew_members add column if not exists created_at timestamptz default now();
+alter table public.crew_members alter column role set default 'member';
+alter table public.crew_members alter column created_at set default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.crew_members'::regclass
+      and contype = 'p'
+  ) then
+    alter table public.crew_members add primary key (id);
+  end if;
+end;
+$$;
+
+create unique index if not exists crew_members_crew_id_user_id_key
+on public.crew_members (crew_id, user_id);
+
+create index if not exists crew_members_user_id_idx
+on public.crew_members (user_id);
+
+create or replace function public.add_crew_creator_member()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.created_by is not null then
+    insert into public.crew_members (crew_id, user_id, role)
+    values (new.id, new.created_by, 'owner')
+    on conflict (crew_id, user_id) do nothing;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists add_crew_creator_member_after_insert on public.crews;
+create trigger add_crew_creator_member_after_insert
+after insert on public.crews
+for each row execute function public.add_crew_creator_member();
+
 create table if not exists public.jobs (
   id uuid primary key default gen_random_uuid(),
   job_type text not null default 'Heavy',
+  visibility_type text not null default 'solo',
+  crew_id uuid references public.crews(id) on delete set null,
   title text not null,
   status text not null default 'Open',
   work_order text,
@@ -90,6 +175,8 @@ create table if not exists public.jobs (
 
 alter table public.jobs add column if not exists id uuid default gen_random_uuid();
 alter table public.jobs add column if not exists job_type text default 'Heavy';
+alter table public.jobs add column if not exists visibility_type text default 'solo';
+alter table public.jobs add column if not exists crew_id uuid references public.crews(id) on delete set null;
 alter table public.jobs add column if not exists title text;
 alter table public.jobs add column if not exists status text default 'Open';
 alter table public.jobs add column if not exists work_order text;
@@ -119,12 +206,22 @@ alter table public.jobs add column if not exists created_by uuid references publ
 alter table public.jobs add column if not exists updated_by uuid references public.profiles(id) on delete set null;
 
 alter table public.jobs alter column job_type set default 'Heavy';
+alter table public.jobs alter column visibility_type set default 'solo';
 alter table public.jobs alter column status set default 'Open';
 alter table public.jobs alter column created_at set default now();
 
 update public.jobs
 set job_type = 'Heavy'
 where job_type is null;
+
+update public.jobs
+set visibility_type = 'solo',
+    crew_id = null
+where visibility_type is null;
+
+update public.jobs
+set crew_id = null
+where visibility_type = 'solo';
 
 do $$
 begin
@@ -142,6 +239,24 @@ $$;
 create index if not exists jobs_created_by_created_at_idx
 on public.jobs (created_by, created_at desc);
 
+create index if not exists jobs_crew_id_created_at_idx
+on public.jobs (crew_id, created_at desc);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.jobs'::regclass
+      and conname = 'jobs_visibility_type_check'
+  ) then
+    alter table public.jobs
+    add constraint jobs_visibility_type_check
+    check (visibility_type in ('solo', 'crew'));
+  end if;
+end;
+$$;
+
 create or replace function public.set_job_user_fields()
 returns trigger
 language plpgsql
@@ -149,6 +264,12 @@ security definer
 set search_path = public
 as $$
 begin
+  new.visibility_type := coalesce(new.visibility_type, 'solo');
+
+  if new.visibility_type <> 'crew' then
+    new.crew_id := null;
+  end if;
+
   if tg_op = 'INSERT' then
     new.created_by := coalesce(new.created_by, auth.uid());
     new.updated_by := coalesce(new.updated_by, auth.uid());
@@ -166,21 +287,148 @@ create trigger set_job_user_fields_before_write
 before insert or update on public.jobs
 for each row execute function public.set_job_user_fields();
 
+create or replace function public.is_crew_member(target_crew_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.crew_members
+    where crew_members.crew_id = target_crew_id
+      and crew_members.user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.can_access_job(target_job_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.jobs
+    where jobs.id = target_job_id
+      and (
+        (coalesce(jobs.visibility_type, 'solo') = 'solo' and jobs.created_by = auth.uid())
+        or (
+          jobs.visibility_type = 'crew'
+          and jobs.crew_id is not null
+          and public.is_crew_member(jobs.crew_id)
+        )
+      )
+  );
+$$;
+
+create or replace function public.can_manage_job(target_job_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.jobs
+    where jobs.id = target_job_id
+      and jobs.created_by = auth.uid()
+  );
+$$;
+
+alter table public.crews enable row level security;
+alter table public.crew_members enable row level security;
+
+drop policy if exists "crews_select_member" on public.crews;
+create policy "crews_select_member"
+on public.crews
+for select
+to authenticated
+using (created_by = auth.uid() or public.is_crew_member(id));
+
+drop policy if exists "crews_insert_creator" on public.crews;
+create policy "crews_insert_creator"
+on public.crews
+for insert
+to authenticated
+with check (created_by = auth.uid());
+
+drop policy if exists "crews_update_creator" on public.crews;
+create policy "crews_update_creator"
+on public.crews
+for update
+to authenticated
+using (created_by = auth.uid())
+with check (created_by = auth.uid());
+
+drop policy if exists "crew_members_select_member" on public.crew_members;
+create policy "crew_members_select_member"
+on public.crew_members
+for select
+to authenticated
+using (
+  user_id = auth.uid()
+  or public.is_crew_member(crew_id)
+  or exists (
+    select 1
+    from public.crews
+    where crews.id = crew_members.crew_id
+      and crews.created_by = auth.uid()
+  )
+);
+
+drop policy if exists "crew_members_insert_self_or_creator" on public.crew_members;
+drop policy if exists "crew_members_insert_creator" on public.crew_members;
+create policy "crew_members_insert_creator"
+on public.crew_members
+for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.crews
+    where crews.id = crew_members.crew_id
+      and crews.created_by = auth.uid()
+  )
+);
+
 alter table public.jobs enable row level security;
 
 drop policy if exists "jobs_select_own" on public.jobs;
-create policy "jobs_select_own"
+drop policy if exists "jobs_select_visible" on public.jobs;
+create policy "jobs_select_visible"
 on public.jobs
 for select
 to authenticated
-using (created_by = auth.uid());
+using (
+  (coalesce(visibility_type, 'solo') = 'solo' and created_by = auth.uid())
+  or (
+    visibility_type = 'crew'
+    and crew_id is not null
+    and public.is_crew_member(crew_id)
+  )
+);
 
 drop policy if exists "jobs_insert_own" on public.jobs;
 create policy "jobs_insert_own"
 on public.jobs
 for insert
 to authenticated
-with check (created_by = auth.uid() and updated_by = auth.uid());
+with check (
+  created_by = auth.uid()
+  and updated_by = auth.uid()
+  and (
+    (coalesce(visibility_type, 'solo') = 'solo' and crew_id is null)
+    or (
+      visibility_type = 'crew'
+      and crew_id is not null
+      and public.is_crew_member(crew_id)
+    )
+  )
+);
 
 drop policy if exists "jobs_update_own" on public.jobs;
 create policy "jobs_update_own"
@@ -188,7 +436,18 @@ on public.jobs
 for update
 to authenticated
 using (created_by = auth.uid())
-with check (created_by = auth.uid() and updated_by = auth.uid());
+with check (
+  created_by = auth.uid()
+  and updated_by = auth.uid()
+  and (
+    (coalesce(visibility_type, 'solo') = 'solo' and crew_id is null)
+    or (
+      visibility_type = 'crew'
+      and crew_id is not null
+      and public.is_crew_member(crew_id)
+    )
+  )
+);
 
 drop policy if exists "jobs_delete_own" on public.jobs;
 create policy "jobs_delete_own"
@@ -268,18 +527,12 @@ for each row execute function public.set_job_photo_uploaded_by();
 alter table public.job_photos enable row level security;
 
 drop policy if exists "job_photos_select_own_jobs" on public.job_photos;
+drop policy if exists "job_photos_select_visible_jobs" on public.job_photos;
 create policy "job_photos_select_own_jobs"
 on public.job_photos
 for select
 to authenticated
-using (
-  exists (
-    select 1
-    from public.jobs
-    where jobs.id = job_photos.job_id
-      and jobs.created_by = auth.uid()
-  )
-);
+using (public.can_access_job(job_id));
 
 drop policy if exists "job_photos_insert_own_jobs" on public.job_photos;
 create policy "job_photos_insert_own_jobs"
@@ -288,12 +541,7 @@ for insert
 to authenticated
 with check (
   uploaded_by = auth.uid()
-  and exists (
-    select 1
-    from public.jobs
-    where jobs.id = job_photos.job_id
-      and jobs.created_by = auth.uid()
-  )
+  and public.can_access_job(job_id)
 );
 
 drop policy if exists "job_photos_delete_own_jobs" on public.job_photos;
@@ -303,12 +551,7 @@ for delete
 to authenticated
 using (
   uploaded_by = auth.uid()
-  and exists (
-    select 1
-    from public.jobs
-    where jobs.id = job_photos.job_id
-      and jobs.created_by = auth.uid()
-  )
+  and public.can_access_job(job_id)
 );
 
 drop policy if exists "storage_job_photos_select_own_folder" on storage.objects;
@@ -318,7 +561,15 @@ for select
 to authenticated
 using (
   bucket_id = 'job-photos'
-  and (storage.foldername(name))[1] = auth.uid()::text
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.job_photos
+      where job_photos.file_path = storage.objects.name
+        and public.can_access_job(job_photos.job_id)
+    )
+  )
 );
 
 drop policy if exists "storage_job_photos_insert_own_folder" on storage.objects;
@@ -338,7 +589,18 @@ for delete
 to authenticated
 using (
   bucket_id = 'job-photos'
-  and (storage.foldername(name))[1] = auth.uid()::text
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.job_photos
+      where job_photos.file_path = storage.objects.name
+        and (
+          job_photos.uploaded_by = auth.uid()
+          or public.can_manage_job(job_photos.job_id)
+        )
+    )
+  )
 );
 
 insert into storage.buckets (id, name, public, file_size_limit)
@@ -417,14 +679,7 @@ create policy "diagnostic_files_select_own_jobs"
 on public.diagnostic_files
 for select
 to authenticated
-using (
-  exists (
-    select 1
-    from public.jobs
-    where jobs.id = diagnostic_files.job_id
-      and jobs.created_by = auth.uid()
-  )
-);
+using (public.can_access_job(job_id));
 
 drop policy if exists "diagnostic_files_insert_own_heavy_jobs" on public.diagnostic_files;
 create policy "diagnostic_files_insert_own_heavy_jobs"
@@ -437,7 +692,7 @@ with check (
     select 1
     from public.jobs
     where jobs.id = diagnostic_files.job_id
-      and jobs.created_by = auth.uid()
+      and public.can_access_job(jobs.id)
       and jobs.job_type = 'Heavy'
   )
 );
@@ -449,12 +704,7 @@ for delete
 to authenticated
 using (
   uploaded_by = auth.uid()
-  and exists (
-    select 1
-    from public.jobs
-    where jobs.id = diagnostic_files.job_id
-      and jobs.created_by = auth.uid()
-  )
+  and public.can_access_job(job_id)
 );
 
 drop policy if exists "storage_diagnostic_files_select_own_folder" on storage.objects;
@@ -464,7 +714,15 @@ for select
 to authenticated
 using (
   bucket_id = 'diagnostic-files'
-  and (storage.foldername(name))[1] = auth.uid()::text
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.diagnostic_files
+      where diagnostic_files.file_path = storage.objects.name
+        and public.can_access_job(diagnostic_files.job_id)
+    )
+  )
 );
 
 drop policy if exists "storage_diagnostic_files_insert_own_folder" on storage.objects;
@@ -484,5 +742,16 @@ for delete
 to authenticated
 using (
   bucket_id = 'diagnostic-files'
-  and (storage.foldername(name))[1] = auth.uid()::text
+  and (
+    (storage.foldername(name))[1] = auth.uid()::text
+    or exists (
+      select 1
+      from public.diagnostic_files
+      where diagnostic_files.file_path = storage.objects.name
+        and (
+          diagnostic_files.uploaded_by = auth.uid()
+          or public.can_manage_job(diagnostic_files.job_id)
+        )
+    )
+  )
 );

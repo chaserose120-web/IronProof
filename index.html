@@ -131,6 +131,24 @@
           </div>
 
           <div class="form-section-title">
+            <span>Visibility</span>
+            <p>Choose whether this job is private to you or shared with your crew.</p>
+          </div>
+
+          <div class="visibility-switch" aria-label="Job visibility">
+            <label>
+              <input type="radio" name="visibilityType" value="solo" checked />
+              Solo
+            </label>
+            <label>
+              <input type="radio" name="visibilityType" value="crew" />
+              Crew
+            </label>
+          </div>
+
+          <p class="visibility-message" id="visibilityMessage" aria-live="polite"></p>
+
+          <div class="form-section-title">
             <span>Shared job details</span>
             <p>These fields apply to both Heavy and Automotive work.</p>
           </div>
