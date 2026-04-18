@@ -388,12 +388,12 @@ async function loadJobs() {
   jobList.innerHTML = '<div class="empty-list">Loading your jobs from Supabase...</div>';
 
   try {
-    const crewJobIds = await loadCrewJobIdsForCurrentUser();
+    const crewIds = await loadCrewIdsForCurrentUser();
     const jobSelect =
       "id,job_type,visibility_type,crew_id,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by";
     const query = supabaseClient.from("jobs").select(jobSelect).order("created_at", { ascending: false });
-    const { data, error } = crewJobIds.length
-      ? await query.or(`created_by.eq.${currentUser.id},id.in.(${crewJobIds.join(",")})`)
+    const { data, error } = crewIds.length
+      ? await query.or(`created_by.eq.${currentUser.id},crew_id.in.(${crewIds.join(",")})`)
       : await query.eq("created_by", currentUser.id);
 
     if (error) {
@@ -421,7 +421,7 @@ async function loadJobs() {
   }
 }
 
-async function loadCrewJobIdsForCurrentUser() {
+async function loadCrewIdsForCurrentUser() {
   const { data: memberships, error: membershipError } = await supabaseClient
     .from("job_crew_members")
     .select("job_crew_id")
@@ -433,20 +433,7 @@ async function loadCrewJobIdsForCurrentUser() {
 
   const crewIds = [...new Set(memberships.map((membership) => membership.job_crew_id).filter(Boolean))];
 
-  if (!crewIds.length) {
-    return [];
-  }
-
-  const { data: crews, error: crewError } = await supabaseClient
-    .from("job_crews")
-    .select("job_id")
-    .in("id", crewIds);
-
-  if (crewError) {
-    throw crewError;
-  }
-
-  return [...new Set(crews.map((crew) => crew.job_id).filter(Boolean))];
+  return crewIds;
 }
 
 async function createJob(payload) {

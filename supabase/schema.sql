@@ -521,8 +521,8 @@ set search_path = public
 as $$
   select job_crew_members.role
   from public.job_crew_members
-  join public.job_crews on job_crews.id = job_crew_members.job_crew_id
-  where job_crews.job_id = target_job_id
+  join public.jobs on jobs.crew_id = job_crew_members.job_crew_id
+  where jobs.id = target_job_id
     and job_crew_members.user_id = auth.uid()
   limit 1;
 $$;
@@ -537,8 +537,8 @@ as $$
   select exists (
     select 1
     from public.job_crew_members
-    join public.job_crews on job_crews.id = job_crew_members.job_crew_id
-    where job_crews.job_id = target_job_id
+    join public.jobs on jobs.crew_id = job_crew_members.job_crew_id
+    where jobs.id = target_job_id
       and job_crew_members.user_id = auth.uid()
   );
 $$;
@@ -579,8 +579,7 @@ as $$
             or exists (
               select 1
               from public.job_crew_members
-              join public.job_crews on job_crews.id = job_crew_members.job_crew_id
-              where job_crews.job_id = jobs.id
+              where job_crew_members.job_crew_id = jobs.crew_id
                 and job_crew_members.user_id = auth.uid()
             )
           )
