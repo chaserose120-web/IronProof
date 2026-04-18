@@ -338,7 +338,6 @@ on public.job_crews (join_code);
 create table if not exists public.job_crew_members (
   id uuid primary key default gen_random_uuid(),
   job_crew_id uuid not null references public.job_crews(id) on delete cascade,
-  job_id uuid not null references public.jobs(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   role text not null default 'crew_worker',
   created_at timestamptz not null default now()
@@ -346,7 +345,6 @@ create table if not exists public.job_crew_members (
 
 alter table public.job_crew_members add column if not exists id uuid default gen_random_uuid();
 alter table public.job_crew_members add column if not exists job_crew_id uuid references public.job_crews(id) on delete cascade;
-alter table public.job_crew_members add column if not exists job_id uuid references public.jobs(id) on delete cascade;
 alter table public.job_crew_members add column if not exists user_id uuid references public.profiles(id) on delete cascade;
 alter table public.job_crew_members add column if not exists role text default 'crew_worker';
 alter table public.job_crew_members add column if not exists created_at timestamptz default now();
@@ -391,9 +389,6 @@ $$;
 create unique index if not exists job_crew_members_job_crew_id_user_id_key
 on public.job_crew_members (job_crew_id, user_id);
 
-create index if not exists job_crew_members_job_id_idx
-on public.job_crew_members (job_id);
-
 insert into public.job_crews (job_id, name, created_by)
 select jobs.id,
        coalesce(nullif(trim(jobs.title), '') || ' Crew', 'Crew for Job ' || jobs.id::text),
@@ -406,17 +401,16 @@ where jobs.visibility_type = 'crew'
     where job_crews.job_id = jobs.id
   );
 
-insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
-select job_crews.id, jobs.id, jobs.created_by, 'crew_lead'
+insert into public.job_crew_members (job_crew_id, user_id, role)
+select job_crews.id, jobs.created_by, 'crew_lead'
 from public.jobs
 join public.job_crews on job_crews.job_id = jobs.id
 where jobs.visibility_type = 'crew'
   and jobs.created_by is not null
 on conflict (job_crew_id, user_id) do nothing;
 
-insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
+insert into public.job_crew_members (job_crew_id, user_id, role)
 select job_crews.id,
-       jobs.id,
        crew_members.user_id,
        case
          when crew_members.role = 'owner' then 'crew_lead'
@@ -527,7 +521,8 @@ set search_path = public
 as $$
   select job_crew_members.role
   from public.job_crew_members
-  where job_crew_members.job_id = target_job_id
+  join public.job_crews on job_crews.id = job_crew_members.job_crew_id
+  where job_crews.job_id = target_job_id
     and job_crew_members.user_id = auth.uid()
   limit 1;
 $$;
@@ -542,7 +537,8 @@ as $$
   select exists (
     select 1
     from public.job_crew_members
-    where job_crew_members.job_id = target_job_id
+    join public.job_crews on job_crews.id = job_crew_members.job_crew_id
+    where job_crews.job_id = target_job_id
       and job_crew_members.user_id = auth.uid()
   );
 $$;
@@ -596,8 +592,8 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
-  values (new.id, new.job_id, coalesce(new.created_by, auth.uid()), 'crew_lead')
+  insert into public.job_crew_members (job_crew_id, user_id, role)
+  values (new.id, coalesce(new.created_by, auth.uid()), 'crew_lead')
   on conflict (job_crew_id, user_id) do nothing;
 
   update public.jobs
@@ -614,25 +610,8 @@ create trigger add_job_crew_creator_member_after_insert
 after insert on public.job_crews
 for each row execute function public.add_job_crew_creator_member();
 
-create or replace function public.set_job_crew_member_job_id()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  select job_id into new.job_id
-  from public.job_crews
-  where id = new.job_crew_id;
-
-  return new;
-end;
-$$;
-
 drop trigger if exists set_job_crew_member_job_id_before_insert on public.job_crew_members;
-create trigger set_job_crew_member_job_id_before_insert
-before insert on public.job_crew_members
-for each row execute function public.set_job_crew_member_job_id();
+drop function if exists public.set_job_crew_member_job_id();
 
 create or replace function public.join_job_crew(join_code_input text)
 returns void
@@ -652,8 +631,8 @@ begin
     raise exception 'No job crew found for that join code.';
   end if;
 
-  insert into public.job_crew_members (job_crew_id, job_id, user_id, role)
-  values (crew_record.id, crew_record.job_id, auth.uid(), 'crew_worker')
+  insert into public.job_crew_members (job_crew_id, user_id, role)
+  values (crew_record.id, auth.uid(), 'crew_worker')
   on conflict (job_crew_id, user_id) do nothing;
 end;
 $$;
@@ -704,29 +683,65 @@ create policy "job_crew_members_select_accessible_jobs"
 on public.job_crew_members
 for select
 to authenticated
-using (public.can_access_job(job_id));
+using (
+  exists (
+    select 1
+    from public.job_crews
+    where job_crews.id = job_crew_members.job_crew_id
+      and public.can_access_job(job_crews.job_id)
+  )
+);
 
 drop policy if exists "job_crew_members_insert_manageable_jobs" on public.job_crew_members;
 create policy "job_crew_members_insert_manageable_jobs"
 on public.job_crew_members
 for insert
 to authenticated
-with check (public.can_manage_job(job_id));
+with check (
+  exists (
+    select 1
+    from public.job_crews
+    where job_crews.id = job_crew_members.job_crew_id
+      and public.can_manage_job(job_crews.job_id)
+  )
+);
 
 drop policy if exists "job_crew_members_update_manageable_jobs" on public.job_crew_members;
 create policy "job_crew_members_update_manageable_jobs"
 on public.job_crew_members
 for update
 to authenticated
-using (public.can_manage_job(job_id))
-with check (public.can_manage_job(job_id));
+using (
+  exists (
+    select 1
+    from public.job_crews
+    where job_crews.id = job_crew_members.job_crew_id
+      and public.can_manage_job(job_crews.job_id)
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.job_crews
+    where job_crews.id = job_crew_members.job_crew_id
+      and public.can_manage_job(job_crews.job_id)
+  )
+);
 
 drop policy if exists "job_crew_members_delete_manageable_jobs" on public.job_crew_members;
 create policy "job_crew_members_delete_manageable_jobs"
 on public.job_crew_members
 for delete
 to authenticated
-using (public.can_manage_job(job_id) or user_id = auth.uid());
+using (
+  user_id = auth.uid()
+  or exists (
+    select 1
+    from public.job_crews
+    where job_crews.id = job_crew_members.job_crew_id
+      and public.can_manage_job(job_crews.job_id)
+  )
+);
 
 alter table public.crews enable row level security;
 alter table public.crew_members enable row level security;
