@@ -286,6 +286,30 @@ body.dark .job-card p {
   color: #e6e8ec;
 }
 
+body.dark .job-type-switch label,
+body.dark .visibility-switch label {
+  border-color: rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    rgba(10, 9, 8, 0.9);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+  color: #ffffff;
+}
+
+body.dark .job-type-switch label:has(input:checked),
+body.dark .visibility-switch label:has(input:checked) {
+  border-color: rgba(255, 59, 48, 0.82);
+  background:
+    linear-gradient(135deg, rgba(255, 59, 48, 0.28), rgba(255, 255, 255, 0.06)),
+    rgba(24, 10, 9, 0.96);
+  box-shadow: 0 16px 34px rgba(255, 59, 48, 0.16);
+}
+
+body.dark .job-type-switch input,
+body.dark .visibility-switch input {
+  accent-color: var(--rust);
+}
+
 .compact-button {
   min-height: 40px;
   padding: 0 14px;
