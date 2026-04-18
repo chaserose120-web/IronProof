@@ -470,7 +470,10 @@ async function loadJobCrewsForJobs(jobIds) {
     throw crewError;
   }
 
+  const jobIdByCrewId = new Map();
+
   crews.forEach((crew) => {
+    jobIdByCrewId.set(crew.id, crew.job_id);
     jobCrewsByJobId.set(crew.job_id, {
       id: crew.id,
       jobId: crew.job_id,
@@ -487,7 +490,7 @@ async function loadJobCrewsForJobs(jobIds) {
 
   const { data: members, error: memberError } = await supabaseClient
     .from("job_crew_members")
-    .select("id,job_id,job_crew_id,user_id,role,created_at,profiles(display_name,email)")
+    .select("id,job_crew_id,user_id,role,created_at,profiles(display_name,email)")
     .in(
       "job_crew_id",
       crews.map((crew) => crew.id),
@@ -499,12 +502,18 @@ async function loadJobCrewsForJobs(jobIds) {
   }
 
   members.forEach((member) => {
-    const existingMembers = jobCrewMembersByJobId.get(member.job_id) || [];
-    jobCrewMembersByJobId.set(member.job_id, [
+    const jobId = jobIdByCrewId.get(member.job_crew_id);
+
+    if (!jobId) {
+      return;
+    }
+
+    const existingMembers = jobCrewMembersByJobId.get(jobId) || [];
+    jobCrewMembersByJobId.set(jobId, [
       ...existingMembers,
       {
         id: member.id,
-        jobId: member.job_id,
+        jobId,
         jobCrewId: member.job_crew_id,
         userId: member.user_id,
         role: member.role,
