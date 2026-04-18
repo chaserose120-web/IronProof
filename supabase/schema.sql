@@ -543,6 +543,22 @@ as $$
   );
 $$;
 
+create or replace function public.is_job_crew_lead(target_job_crew_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.job_crew_members
+    where job_crew_members.job_crew_id = target_job_crew_id
+      and job_crew_members.user_id = auth.uid()
+      and job_crew_members.role = 'crew_lead'
+  );
+$$;
+
 create or replace function public.can_access_job(target_job_id uuid)
 returns boolean
 language sql
@@ -560,7 +576,13 @@ as $$
           jobs.visibility_type = 'crew'
           and (
             jobs.created_by = auth.uid()
-            or public.is_job_crew_member(jobs.id)
+            or exists (
+              select 1
+              from public.job_crew_members
+              join public.job_crews on job_crews.id = job_crew_members.job_crew_id
+              where job_crews.job_id = jobs.id
+                and job_crew_members.user_id = auth.uid()
+            )
           )
         )
       )
@@ -711,21 +733,10 @@ create policy "job_crew_members_update_manageable_jobs"
 on public.job_crew_members
 for update
 to authenticated
-using (
-  exists (
-    select 1
-    from public.job_crews
-    where job_crews.id = job_crew_members.job_crew_id
-      and public.can_manage_job(job_crews.job_id)
-  )
-)
+using (public.is_job_crew_lead(job_crew_id) and role <> 'crew_lead')
 with check (
-  exists (
-    select 1
-    from public.job_crews
-    where job_crews.id = job_crew_members.job_crew_id
-      and public.can_manage_job(job_crews.job_id)
-  )
+  public.is_job_crew_lead(job_crew_id)
+  and role in ('crew_worker', 'supervisor')
 );
 
 drop policy if exists "job_crew_members_delete_manageable_jobs" on public.job_crew_members;

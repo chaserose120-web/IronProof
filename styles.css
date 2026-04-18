@@ -867,6 +867,14 @@ textarea:focus {
   font-weight: 800;
 }
 
+.member-role-control {
+  min-width: 160px;
+}
+
+.member-role-control select {
+  min-height: 42px;
+}
+
 .copy-output {
   width: 100%;
   min-height: 220px;

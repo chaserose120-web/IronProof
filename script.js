@@ -388,12 +388,13 @@ async function loadJobs() {
   jobList.innerHTML = '<div class="empty-list">Loading your jobs from Supabase...</div>';
 
   try {
-    const { data, error } = await supabaseClient
-      .from("jobs")
-      .select(
-        "id,job_type,visibility_type,crew_id,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by",
-      )
-      .order("created_at", { ascending: false });
+    const crewJobIds = await loadCrewJobIdsForCurrentUser();
+    const jobSelect =
+      "id,job_type,visibility_type,crew_id,title,status,work_order,job_date,customer,customer_name,customer_phone,customer_email,machine,serial,meter,year,make,model,vin,mileage,summary,complaint,cause,correction,customer_concern,diagnosis,repair_performed,parts,created_at,created_by,updated_by";
+    const query = supabaseClient.from("jobs").select(jobSelect).order("created_at", { ascending: false });
+    const { data, error } = crewJobIds.length
+      ? await query.or(`created_by.eq.${currentUser.id},id.in.(${crewJobIds.join(",")})`)
+      : await query.eq("created_by", currentUser.id);
 
     if (error) {
       throw error;
@@ -418,6 +419,34 @@ async function loadJobs() {
     render();
     jobList.innerHTML = `<div class="empty-list">Could not load Supabase jobs: ${escapeHtml(error.message)}</div>`;
   }
+}
+
+async function loadCrewJobIdsForCurrentUser() {
+  const { data: memberships, error: membershipError } = await supabaseClient
+    .from("job_crew_members")
+    .select("job_crew_id")
+    .eq("user_id", currentUser.id);
+
+  if (membershipError) {
+    throw membershipError;
+  }
+
+  const crewIds = [...new Set(memberships.map((membership) => membership.job_crew_id).filter(Boolean))];
+
+  if (!crewIds.length) {
+    return [];
+  }
+
+  const { data: crews, error: crewError } = await supabaseClient
+    .from("job_crews")
+    .select("job_id")
+    .in("id", crewIds);
+
+  if (crewError) {
+    throw crewError;
+  }
+
+  return [...new Set(crews.map((crew) => crew.job_id).filter(Boolean))];
 }
 
 async function createJob(payload) {
@@ -970,6 +999,9 @@ function renderDetail() {
   detail.querySelectorAll("[data-diagnostic-id]").forEach((button) => {
     button.addEventListener("click", () => deleteDiagnosticFile(button.dataset.diagnosticId));
   });
+  detail.querySelectorAll("[data-member-role]").forEach((select) => {
+    select.addEventListener("change", () => updateCrewMemberRole(select.dataset.memberRole, select.value));
+  });
 }
 
 function openPhotoModal(src, alt) {
@@ -1256,8 +1288,26 @@ function applyCreatedCrewToJob(jobId, crew) {
     createdBy: crew.created_by,
     createdAt: crew.created_at,
   };
+  const existingMembers = jobCrewMembersByJobId.get(jobId) || [];
+  const leadMember = {
+    id: `${crew.id}-${currentUser.id}`,
+    jobId,
+    jobCrewId: crew.id,
+    userId: currentUser.id,
+    role: "crew_lead",
+    createdAt: crew.created_at,
+    displayName: currentProfile?.display_name || currentUser.email,
+    email: currentProfile?.email || currentUser.email,
+  };
+  const nextMembers = existingMembers.some((member) => member.userId === currentUser.id)
+    ? existingMembers
+    : [...existingMembers, leadMember];
+
   jobCrewsByJobId.set(jobId, normalizedCrew);
-  jobs = jobs.map((job) => (job.id === jobId ? { ...job, crew: normalizedCrew, crewId: crew.id } : job));
+  jobCrewMembersByJobId.set(jobId, nextMembers);
+  jobs = jobs.map((job) =>
+    job.id === jobId ? { ...job, crew: normalizedCrew, crewId: crew.id, crewMembers: nextMembers } : job,
+  );
 }
 
 async function joinCrewForJob(joinCode) {
@@ -1287,6 +1337,35 @@ async function joinCrewForJob(joinCode) {
     showVisibilityMessage(`Join failed: ${error.message}`);
     showCrewBoardMessage(`Join failed: ${error.message}`);
     alert(`Join failed: ${error.message}`);
+  }
+}
+
+async function updateCrewMemberRole(memberId, role) {
+  const nextRole = String(role || "").trim();
+
+  if (!["crew_worker", "supervisor"].includes(nextRole)) {
+    showVisibilityMessage("Crew leads can assign Crew Worker or Supervisor roles.");
+    return;
+  }
+
+  showVisibilityMessage("Updating crew member role...");
+
+  try {
+    const { error } = await supabaseClient
+      .from("job_crew_members")
+      .update({ role: nextRole })
+      .eq("id", memberId);
+
+    if (error) {
+      throw error;
+    }
+
+    await loadJobs();
+    showVisibilityMessage("Crew member role updated.");
+  } catch (error) {
+    showVisibilityMessage(`Role update failed: ${error.message}`);
+    alert(`Role update failed: ${error.message}`);
+    await loadJobs();
   }
 }
 
@@ -1491,6 +1570,10 @@ function getCurrentUserCrewRole(job) {
   return job.crewMembers.find((member) => member.userId === currentUser?.id)?.role || "";
 }
 
+function isCurrentUserCrewLead(job) {
+  return getCurrentUserCrewRole(job) === "crew_lead";
+}
+
 function getCurrentUserCrewRoleLabel(job) {
   const role = getCurrentUserCrewRole(job);
 
@@ -1582,6 +1665,7 @@ function renderDiagnosticFiles(job) {
 
 function renderCrewPanel(job) {
   const canManageJob = canManageCrewJob(job);
+  const canManageMembers = isCurrentUserCrewLead(job);
   const members = job.crewMembers.length
     ? job.crewMembers
         .map(
@@ -1591,7 +1675,7 @@ function renderCrewPanel(job) {
                 <strong>${escapeHtml(member.displayName)}</strong>
                 ${member.email ? `<small>${escapeHtml(member.email)}</small>` : ""}
               </span>
-              <span class="crew-role">${escapeHtml(formatCrewRole(member.role) || member.role)}</span>
+              ${renderCrewMemberRoleControl(member, canManageMembers)}
             </li>
           `,
         )
@@ -1647,10 +1731,27 @@ function renderCrewPanel(job) {
       </div>
 
       <div class="crew-members">
-        <strong>Current Crew Members</strong>
+        <strong>Crew Member Management</strong>
+        <p>Only crew leads can change roles. Crew workers can edit the job; supervisors are view-only.</p>
         <ul>${members}</ul>
       </div>
     </section>
+  `;
+}
+
+function renderCrewMemberRoleControl(member, canManageMembers) {
+  if (!canManageMembers || member.role === "crew_lead") {
+    return `<span class="crew-role">${escapeHtml(formatCrewRole(member.role) || member.role)}</span>`;
+  }
+
+  return `
+    <label class="member-role-control">
+      Role
+      <select data-member-role="${member.id}">
+        <option value="crew_worker" ${member.role === "crew_worker" ? "selected" : ""}>Crew Worker</option>
+        <option value="supervisor" ${member.role === "supervisor" ? "selected" : ""}>Supervisor</option>
+      </select>
+    </label>
   `;
 }
 
