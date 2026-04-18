@@ -37,8 +37,8 @@ body {
 body.dark {
   --ink: #f7f4ed;
   --coal: #ffffff;
-  --steel: #c9c2b7;
-  --muted: #b5aca0;
+  --steel: #e6e8ec;
+  --muted: #c8cbd2;
   --paper: #090807;
   --panel: rgba(18, 16, 15, 0.86);
   --panel-strong: rgba(24, 21, 20, 0.9);
@@ -241,6 +241,49 @@ body.dark .theme-toggle {
 body.dark .theme-toggle button.active {
   color: #fff;
   background: var(--rust);
+}
+
+body.dark .brand small,
+body.dark .app-header nav a,
+body.dark .user-menu span,
+body.dark p,
+body.dark .panel-heading p,
+body.dark .form-section-title p,
+body.dark .job-type-switch label small,
+body.dark .visibility-switch label small,
+body.dark .file-drop small,
+body.dark .photo-drop small,
+body.dark .job-card small,
+body.dark .crew-actions p,
+body.dark .crew-members small,
+body.dark .crew-role {
+  color: #c8cbd2;
+}
+
+body.dark h1,
+body.dark h2,
+body.dark h3,
+body.dark label,
+body.dark .form-section-title span,
+body.dark .job-list-section h3,
+body.dark .job-card strong,
+body.dark .quick-stats span,
+body.dark .quick-stats strong,
+body.dark .note-block strong,
+body.dark .crew-members > strong,
+body.dark .crew-actions strong {
+  color: #ffffff;
+}
+
+body.dark .eyebrow,
+body.dark .diagnostic-item a {
+  color: #ff6b5f;
+}
+
+body.dark .detail-meta span,
+body.dark .note-block p,
+body.dark .job-card p {
+  color: #e6e8ec;
 }
 
 .compact-button {
