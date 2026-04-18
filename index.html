@@ -16,7 +16,7 @@
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
-  <body>
+  <body class="light">
     <div class="texture"></div>
     <header class="app-header">
       <a class="brand" href="#top" aria-label="IronProof home">
@@ -35,6 +35,10 @@
 
       <div class="user-menu hidden" id="userMenu">
         <span id="userDisplay"></span>
+        <div class="theme-toggle" aria-label="Theme selection">
+          <button class="active" type="button" data-theme="light" id="lightThemeButton">Light</button>
+          <button type="button" data-theme="dark" id="darkThemeButton">Dark</button>
+        </div>
         <button class="button secondary compact-button" type="button" id="logoutButton">Logout</button>
       </div>
     </header>

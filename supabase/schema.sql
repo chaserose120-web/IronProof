@@ -5,8 +5,32 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   display_name text,
   email text not null,
+  theme text not null default 'light',
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists theme text default 'light';
+update public.profiles
+set theme = 'light'
+where theme is null
+   or theme not in ('light', 'dark');
+alter table public.profiles alter column theme set default 'light';
+alter table public.profiles alter column theme set not null;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and conname = 'profiles_theme_check'
+  ) then
+    alter table public.profiles
+    add constraint profiles_theme_check
+    check (theme in ('light', 'dark'));
+  end if;
+end;
+$$;
 
 alter table public.profiles enable row level security;
 
@@ -39,11 +63,12 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, display_name, email)
+  insert into public.profiles (id, display_name, email, theme)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'display_name', split_part(new.email, '@', 1)),
-    new.email
+    new.email,
+    'light'
   )
   on conflict (id) do nothing;
 

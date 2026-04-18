@@ -34,6 +34,27 @@ body {
   font-family: "Manrope", sans-serif;
 }
 
+body.dark {
+  --ink: #f7f4ed;
+  --coal: #ffffff;
+  --steel: #c9c2b7;
+  --muted: #b5aca0;
+  --paper: #090807;
+  --panel: rgba(18, 16, 15, 0.86);
+  --panel-strong: rgba(24, 21, 20, 0.9);
+  --yellow: #e43d30;
+  --amber: #ff5a48;
+  --rust: #d83127;
+  --green: #527f58;
+  --blue: #8a2d28;
+  --line: rgba(255, 255, 255, 0.16);
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  background:
+    radial-gradient(circle at 10% 8%, rgba(228, 61, 48, 0.34), transparent 24rem),
+    radial-gradient(circle at 85% 10%, rgba(120, 16, 12, 0.4), transparent 26rem),
+    linear-gradient(135deg, #020202 0%, #0d0b0a 58%, #17110f 100%);
+}
+
 button,
 input,
 select,
@@ -63,6 +84,13 @@ a {
   mask-image: linear-gradient(to bottom, black 0%, transparent 86%);
 }
 
+body.dark .texture {
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
 .app-header,
 .app-shell {
   position: relative;
@@ -86,6 +114,11 @@ a {
   background: rgba(255, 246, 220, 0.88);
   box-shadow: 0 16px 44px rgba(21, 19, 15, 0.1);
   backdrop-filter: blur(18px);
+}
+
+body.dark .app-header {
+  background: rgba(14, 12, 11, 0.88);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.36);
 }
 
 .brand,
@@ -119,6 +152,11 @@ a {
   font-family: "Barlow Condensed", sans-serif;
   font-size: 1.2rem;
   font-weight: 800;
+}
+
+body.dark .brand-mark {
+  color: #fff;
+  background: var(--rust);
 }
 
 .brand > span:last-child {
@@ -169,6 +207,40 @@ a {
   color: var(--muted);
   font-size: 0.86rem;
   font-weight: 900;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.theme-toggle button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.theme-toggle button.active {
+  color: var(--ink);
+  background: var(--yellow);
+}
+
+body.dark .theme-toggle {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+body.dark .theme-toggle button.active {
+  color: #fff;
+  background: var(--rust);
 }
 
 .compact-button {
@@ -261,6 +333,20 @@ p {
   box-shadow: 0 16px 40px rgba(21, 19, 15, 0.08);
 }
 
+body.dark .quick-stats div,
+body.dark .form-section,
+body.dark .job-card,
+body.dark .crew-board-tools,
+body.dark .note-block,
+body.dark .diagnostic-item,
+body.dark .crew-actions,
+body.dark .crew-members li,
+body.dark .detail-meta span {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
+    rgba(18, 16, 15, 0.82);
+}
+
 .quick-stats span {
   display: block;
   font-family: "Barlow Condensed", sans-serif;
@@ -290,6 +376,10 @@ p {
   background: var(--panel);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+}
+
+body.dark .panel {
+  background: var(--panel);
 }
 
 .job-form,
@@ -455,6 +545,18 @@ textarea {
   outline: none;
 }
 
+body.dark input,
+body.dark select,
+body.dark textarea {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.dark input::placeholder,
+body.dark textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
 input,
 select {
   min-height: 50px;
@@ -480,6 +582,11 @@ textarea:focus {
   border-radius: 26px;
   background: rgba(255, 255, 255, 0.28);
   text-align: center;
+}
+
+body.dark .photo-drop,
+body.dark .file-drop {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .file-drop,
@@ -651,10 +758,20 @@ textarea:focus {
   box-shadow: 0 12px 28px rgba(239, 165, 10, 0.26);
 }
 
+body.dark .button.primary {
+  color: #fff;
+  background: var(--rust);
+  box-shadow: 0 12px 28px rgba(216, 49, 39, 0.28);
+}
+
 .button.secondary {
   border: 1px solid var(--line);
   color: var(--ink);
   background: rgba(255, 255, 255, 0.36);
+}
+
+body.dark .button.secondary {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .button.danger {
@@ -690,6 +807,11 @@ textarea:focus {
 .filter-button.active {
   color: var(--ink);
   background: var(--yellow);
+}
+
+body.dark .filter-button.active {
+  color: #fff;
+  background: var(--rust);
 }
 
 .crew-board-tools {
@@ -750,6 +872,11 @@ textarea:focus {
   background: rgba(255, 202, 5, 0.18);
 }
 
+body.dark .job-card:hover,
+body.dark .job-card.active {
+  background: rgba(216, 49, 39, 0.2);
+}
+
 .job-card strong,
 .job-card small,
 .job-card p {
@@ -803,6 +930,11 @@ textarea:focus {
 .status-pill.Waiting {
   color: var(--ink);
   background: var(--yellow);
+}
+
+body.dark .status-pill.Waiting {
+  color: #fff;
+  background: var(--rust);
 }
 
 .status-pill.Needs {

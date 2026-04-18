@@ -4,6 +4,7 @@ const authMessage = document.querySelector("#authMessage");
 const userMenu = document.querySelector("#userMenu");
 const userDisplay = document.querySelector("#userDisplay");
 const logoutButton = document.querySelector("#logoutButton");
+const themeButtons = document.querySelectorAll("[data-theme]");
 const workspace = document.querySelector(".workspace");
 const detailPanel = document.querySelector("#detail");
 const form = document.querySelector("#jobForm");
@@ -49,6 +50,7 @@ let editingJobId = null;
 let stagedPhotos = [];
 let stagedDiagnosticFile = null;
 
+applyTheme("light");
 setDefaultDate();
 updateJobTypeFields("Heavy");
 render();
@@ -109,6 +111,10 @@ logoutButton.addEventListener("click", async () => {
   }
 
   await supabaseClient.auth.signOut();
+});
+
+themeButtons.forEach((button) => {
+  button.addEventListener("click", () => setTheme(button.dataset.theme));
 });
 
 photoModal.addEventListener("click", (event) => {
@@ -305,6 +311,7 @@ async function handleSession(session) {
   }
 
   currentProfile = await loadProfile(currentUser);
+  applyTheme(currentProfile?.theme || "light");
   setSignedInState();
   await loadJobs();
 }
@@ -321,6 +328,7 @@ function setSignedInState() {
 function setSignedOutState() {
   currentUser = null;
   currentProfile = null;
+  applyTheme("light");
   jobs = [];
   jobCrewsByJobId = new Map();
   jobCrewMembersByJobId = new Map();
@@ -357,6 +365,7 @@ async function createProfile(user) {
       id: user.id,
       display_name: displayName,
       email: user.email,
+      theme: "light",
     })
     .select()
     .single();
@@ -1816,6 +1825,35 @@ function setAuthMessage(message) {
 
 function showSupabaseSetupMessage() {
   setAuthMessage("Add SUPABASE_URL and SUPABASE_ANON_KEY in the project environment to use IronProof.");
+}
+
+function applyTheme(theme) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  document.body.classList.toggle("dark", nextTheme === "dark");
+  document.body.classList.toggle("light", nextTheme === "light");
+  themeButtons.forEach((button) => {
+    button.classList.toggle("active", button.dataset.theme === nextTheme);
+  });
+}
+
+async function setTheme(theme) {
+  const nextTheme = theme === "dark" ? "dark" : "light";
+  applyTheme(nextTheme);
+
+  if (!currentUser || !supabaseClient) {
+    return;
+  }
+
+  currentProfile = { ...(currentProfile || {}), theme: nextTheme };
+
+  const { error } = await supabaseClient
+    .from("profiles")
+    .update({ theme: nextTheme })
+    .eq("id", currentUser.id);
+
+  if (error) {
+    setAuthMessage(`Theme save failed: ${error.message}`);
+  }
 }
 
 function escapeHtml(value) {
