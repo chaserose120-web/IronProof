@@ -613,27 +613,38 @@ async function loadPhotosForJobs(jobIds) {
 
   const photos = await Promise.all(
     data.map(async (photo) => {
-      const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
-        .from("job-photos")
-        .createSignedUrl(photo.file_path, 60 * 60);
+      try {
+        const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+          .from("job-photos")
+          .createSignedUrl(photo.file_path, 60 * 60);
 
-      if (signedUrlError) {
-        throw signedUrlError;
+        if (signedUrlError) {
+          throw signedUrlError;
+        }
+
+        return {
+          id: photo.id,
+          jobId: photo.job_id,
+          uploadedBy: photo.uploaded_by,
+          filePath: photo.file_path,
+          fileName: photo.file_name,
+          createdAt: photo.created_at,
+          url: signedUrlData.signedUrl,
+        };
+      } catch (error) {
+        console.warn("[IronProof photos] skipping missing or unavailable storage file", {
+          table: "job_photos",
+          rowId: photo.id,
+          jobId: photo.job_id,
+          filePath: photo.file_path,
+          error,
+        });
+        return null;
       }
-
-      return {
-        id: photo.id,
-        jobId: photo.job_id,
-        uploadedBy: photo.uploaded_by,
-        filePath: photo.file_path,
-        fileName: photo.file_name,
-        createdAt: photo.created_at,
-        url: signedUrlData.signedUrl,
-      };
     }),
   );
 
-  photos.forEach((photo) => {
+  photos.filter(Boolean).forEach((photo) => {
     const existingPhotos = jobPhotosByJobId.get(photo.jobId) || [];
     jobPhotosByJobId.set(photo.jobId, [...existingPhotos, photo]);
   });
@@ -658,28 +669,39 @@ async function loadDiagnosticFilesForJobs(jobIds) {
 
   const files = await Promise.all(
     data.map(async (file) => {
-      const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
-        .from("diagnostic-files")
-        .createSignedUrl(file.file_path, 60 * 60);
+      try {
+        const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+          .from("diagnostic-files")
+          .createSignedUrl(file.file_path, 60 * 60);
 
-      if (signedUrlError) {
-        throw signedUrlError;
+        if (signedUrlError) {
+          throw signedUrlError;
+        }
+
+        return {
+          id: file.id,
+          jobId: file.job_id,
+          uploadedBy: file.uploaded_by,
+          fileName: file.file_name,
+          filePath: file.file_path,
+          fileType: file.file_type,
+          createdAt: file.created_at,
+          url: signedUrlData.signedUrl,
+        };
+      } catch (error) {
+        console.warn("[IronProof diagnostics] skipping missing or unavailable storage file", {
+          table: "diagnostic_files",
+          rowId: file.id,
+          jobId: file.job_id,
+          filePath: file.file_path,
+          error,
+        });
+        return null;
       }
-
-      return {
-        id: file.id,
-        jobId: file.job_id,
-        uploadedBy: file.uploaded_by,
-        fileName: file.file_name,
-        filePath: file.file_path,
-        fileType: file.file_type,
-        createdAt: file.created_at,
-        url: signedUrlData.signedUrl,
-      };
     }),
   );
 
-  files.forEach((file) => {
+  files.filter(Boolean).forEach((file) => {
     const existingFiles = diagnosticFilesByJobId.get(file.jobId) || [];
     diagnosticFilesByJobId.set(file.jobId, [...existingFiles, file]);
   });
