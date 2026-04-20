@@ -758,7 +758,6 @@ async function refreshDiagnosticFilesForJob(jobId) {
 async function buildDiagnosticFileFromRow(file) {
   const diagnosticBucketName = "diagnostic-files";
   const savedFilePath = String(file.file_path || "");
-  const normalizedFilePath = normalizeStorageObjectPath(savedFilePath, diagnosticBucketName);
   const diagnosticFile = {
     id: file.id,
     jobId: file.job_id,
@@ -775,7 +774,6 @@ async function buildDiagnosticFileFromRow(file) {
     const signedUrls = await createDiagnosticSignedUrls({
       bucketName: diagnosticBucketName,
       savedFilePath,
-      normalizedFilePath,
       fileName: file.file_name,
       rowId: file.id,
       jobId: file.job_id,
@@ -797,80 +795,58 @@ async function buildDiagnosticFileFromRow(file) {
       jobId: file.job_id,
       bucketName: diagnosticBucketName,
       savedFilePath,
-      normalizedFilePath,
       error,
     });
     return diagnosticFile;
   }
 }
 
-async function createDiagnosticSignedUrls({ bucketName, savedFilePath, normalizedFilePath, fileName, rowId, jobId }) {
+async function createDiagnosticSignedUrls({ bucketName, savedFilePath, fileName, rowId, jobId }) {
   const storageBucket = supabaseClient.storage.from(bucketName);
-  const pathsToTry = [savedFilePath];
 
-  if (normalizedFilePath && normalizedFilePath !== savedFilePath) {
-    pathsToTry.push(normalizedFilePath);
+  const { data: signedUrlData, error: signedUrlError } = await storageBucket.createSignedUrl(savedFilePath, 60 * 60);
+  const { data: downloadUrlData, error: downloadUrlError } = await storageBucket.createSignedUrl(savedFilePath, 60 * 60, {
+    download: fileName || true,
+  });
+
+  console.log("[IronProof diagnostics] signed URL generation result", {
+    bucketName,
+    filePath: savedFilePath,
+    displayFileName: fileName,
+    rowId,
+    jobId,
+    openUrl: {
+      data: signedUrlData,
+      error: signedUrlError,
+    },
+    downloadUrl: {
+      data: downloadUrlData,
+      error: downloadUrlError,
+    },
+  });
+
+  if (!signedUrlError || !downloadUrlError) {
+    return {
+      url: signedUrlData?.signedUrl || downloadUrlData?.signedUrl || "",
+      downloadUrl: downloadUrlData?.signedUrl || signedUrlData?.signedUrl || "",
+      error: null,
+    };
   }
 
-  let lastError = null;
-
-  for (const filePath of pathsToTry) {
-    const { data: signedUrlData, error: signedUrlError } = await storageBucket.createSignedUrl(filePath, 60 * 60);
-    const { data: downloadUrlData, error: downloadUrlError } = await storageBucket.createSignedUrl(filePath, 60 * 60, {
-      download: fileName || true,
-    });
-
-    console.log("[IronProof diagnostics] signed URL generation result", {
-      bucketName,
-      filePath,
-      savedFilePath,
-      rowId,
-      jobId,
-      openUrl: {
-        data: signedUrlData,
-        error: signedUrlError,
-      },
-      downloadUrl: {
-        data: downloadUrlData,
-        error: downloadUrlError,
-      },
-    });
-
-    if (!signedUrlError || !downloadUrlError) {
-      return {
-        url: signedUrlData?.signedUrl || downloadUrlData?.signedUrl || "",
-        downloadUrl: downloadUrlData?.signedUrl || signedUrlData?.signedUrl || "",
-        error: null,
-      };
-    }
-
-    lastError = signedUrlError || downloadUrlError;
-    console.warn("[IronProof diagnostics] signed URL attempt failed", {
-      bucketName,
-      filePath,
-      savedFilePath,
-      rowId,
-      jobId,
-      error: lastError,
-    });
-  }
+  console.warn("[IronProof diagnostics] signed URL failed for exact saved file_path", {
+    bucketName,
+    filePath: savedFilePath,
+    displayFileName: fileName,
+    rowId,
+    jobId,
+    error: signedUrlError || downloadUrlError,
+  });
 
   return {
     url: "",
     downloadUrl: "",
-    error: lastError || new Error("Supabase did not return a signed URL for the diagnostic file."),
+    error: signedUrlError || downloadUrlError || new Error("Supabase did not return a signed URL for the diagnostic file."),
   };
-}
-
-function normalizeStorageObjectPath(filePath, bucketName) {
-  const trimmedPath = String(filePath || "").replace(/^\/+/, "");
-  const bucketPrefix = `${bucketName}/`;
-
-  if (trimmedPath.startsWith(bucketPrefix)) {
-    return trimmedPath.slice(bucketPrefix.length);
-  }
-
-  return trimmedPath;
 }
 
 async function uploadStagedPhotos(jobId, photosToUpload = stagedPhotos) {
@@ -1432,7 +1408,6 @@ async function downloadDiagnosticFile(diagnosticId) {
     const signedUrls = await createDiagnosticSignedUrls({
       bucketName,
       savedFilePath,
-      normalizedFilePath: normalizeStorageObjectPath(savedFilePath, bucketName),
       fileName: file.fileName,
       rowId: file.id,
       jobId: file.jobId,
@@ -1457,7 +1432,8 @@ async function downloadDiagnosticFile(diagnosticId) {
       bucketName: "diagnostic-files",
       rowId: file.id,
       jobId: file.jobId,
-      filePath: file.filePath,
+      filePath: String(file.filePath || ""),
+      displayFileName: file.fileName,
       error,
     });
     showDiagnosticStatus(`Diagnostic download failed: ${error.message}`);
