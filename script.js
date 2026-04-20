@@ -233,15 +233,15 @@ form.addEventListener("submit", async (event) => {
     const savedJob = editingJobId
       ? await updateJob(editingJobId, payload)
       : await createJob({ ...payload, created_by: currentUser.id });
-    const jobIdForPhotos = editingJobId || savedJob?.id;
+    const savedJobId = String(savedJob?.id || editingJobId || "");
+    activeJobId = savedJobId;
     console.log("[IronProof photos] saved job before photo upload", {
       returnedJobId: savedJob?.id,
-      jobIdForPhotos,
+      savedJobId,
       stagedPhotoCount: photosToUpload.length,
     });
-    await uploadStagedPhotos(jobIdForPhotos, photosToUpload);
-    await uploadDiagnosticFile(jobIdForPhotos, diagnosticFileToUpload, diagnosticFileType);
-    activeJobId = jobIdForPhotos;
+    await uploadStagedPhotos(savedJobId, photosToUpload);
+    await uploadDiagnosticFile(savedJobId, diagnosticFileToUpload, diagnosticFileType);
     await loadJobs();
     resetForm();
   } catch (error) {
@@ -657,18 +657,29 @@ async function loadDiagnosticFilesForJobs(jobIds) {
     return;
   }
 
+  const diagnosticQueryFilter = {
+    column: "job_id",
+    operator: "in",
+    value: jobIds.map((jobId) => String(jobId)),
+  };
+
   console.log("[IronProof diagnostics] loading diagnostic_files for jobs", {
-    jobIds,
+    jobIds: diagnosticQueryFilter.value,
+  });
+  console.log("[IronProof diagnostics] diagnostic_files query payload/filter", {
+    table: "diagnostic_files",
+    select: "id,job_id,uploaded_by,file_name,file_path,file_type,created_at",
+    filter: diagnosticQueryFilter,
   });
 
   const { data, error } = await supabaseClient
     .from("diagnostic_files")
     .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
-    .in("job_id", jobIds)
+    .in("job_id", diagnosticQueryFilter.value)
     .order("created_at", { ascending: true });
 
   console.log("[IronProof diagnostics] diagnostic_files query result", {
-    jobIds,
+    jobIds: diagnosticQueryFilter.value,
     data,
     error,
   });
@@ -695,14 +706,25 @@ async function loadDiagnosticFilesForJobs(jobIds) {
 
 async function refreshDiagnosticFilesForJob(jobId) {
   const savedJobId = String(jobId);
+  const diagnosticQueryFilter = {
+    column: "job_id",
+    operator: "eq",
+    value: savedJobId,
+  };
+
   console.log("[IronProof diagnostics] current job id for diagnostic_files query", {
     jobId: savedJobId,
+  });
+  console.log("[IronProof diagnostics] diagnostic_files query payload/filter", {
+    table: "diagnostic_files",
+    select: "id,job_id,uploaded_by,file_name,file_path,file_type,created_at",
+    filter: diagnosticQueryFilter,
   });
 
   const { data, error } = await supabaseClient
     .from("diagnostic_files")
     .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
-    .eq("job_id", savedJobId)
+    .eq("job_id", diagnosticQueryFilter.value)
     .order("created_at", { ascending: true });
 
   console.log("[IronProof diagnostics] query result for current job", {
@@ -926,7 +948,8 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
     throw insertError;
   }
 
-  await refreshDiagnosticFilesForJob(savedJobId);
+  const diagnosticJobId = String(insertedDiagnosticFile?.job_id || savedJobId);
+  await refreshDiagnosticFilesForJob(diagnosticJobId);
   showDiagnosticStatus(`Uploaded ${file.name}.`);
 }
 
