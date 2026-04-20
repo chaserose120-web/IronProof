@@ -756,7 +756,9 @@ async function refreshDiagnosticFilesForJob(jobId) {
 }
 
 async function buildDiagnosticFileFromRow(file) {
-  const objectPath = normalizeStorageObjectPath(file.file_path, "diagnostic-files");
+  const diagnosticBucketName = "diagnostic-files";
+  const savedFilePath = String(file.file_path || "");
+  const normalizedFilePath = normalizeStorageObjectPath(savedFilePath, diagnosticBucketName);
   const diagnosticFile = {
     id: file.id,
     jobId: file.job_id,
@@ -770,17 +772,60 @@ async function buildDiagnosticFileFromRow(file) {
   };
 
   try {
-    const storageBucket = supabaseClient.storage.from("diagnostic-files");
-    const { data: signedUrlData, error: signedUrlError } = await storageBucket.createSignedUrl(objectPath, 60 * 60);
-    const { data: downloadUrlData, error: downloadUrlError } = await storageBucket.createSignedUrl(objectPath, 60 * 60, {
-      download: file.file_name || true,
+    const signedUrls = await createDiagnosticSignedUrls({
+      bucketName: diagnosticBucketName,
+      savedFilePath,
+      normalizedFilePath,
+      fileName: file.file_name,
+      rowId: file.id,
+      jobId: file.job_id,
+    });
+
+    if (!signedUrls.url && !signedUrls.downloadUrl) {
+      throw signedUrls.error;
+    }
+
+    return {
+      ...diagnosticFile,
+      url: signedUrls.url,
+      downloadUrl: signedUrls.downloadUrl,
+    };
+  } catch (error) {
+    console.warn("[IronProof diagnostics] signed URL unavailable; rendering diagnostic row without download link", {
+      table: "diagnostic_files",
+      rowId: file.id,
+      jobId: file.job_id,
+      bucketName: diagnosticBucketName,
+      savedFilePath,
+      normalizedFilePath,
+      error,
+    });
+    return diagnosticFile;
+  }
+}
+
+async function createDiagnosticSignedUrls({ bucketName, savedFilePath, normalizedFilePath, fileName, rowId, jobId }) {
+  const storageBucket = supabaseClient.storage.from(bucketName);
+  const pathsToTry = [savedFilePath];
+
+  if (normalizedFilePath && normalizedFilePath !== savedFilePath) {
+    pathsToTry.push(normalizedFilePath);
+  }
+
+  let lastError = null;
+
+  for (const filePath of pathsToTry) {
+    const { data: signedUrlData, error: signedUrlError } = await storageBucket.createSignedUrl(filePath, 60 * 60);
+    const { data: downloadUrlData, error: downloadUrlError } = await storageBucket.createSignedUrl(filePath, 60 * 60, {
+      download: fileName || true,
     });
 
     console.log("[IronProof diagnostics] signed URL generation result", {
-      rowId: file.id,
-      jobId: file.job_id,
-      storedFilePath: file.file_path,
-      objectPath,
+      bucketName,
+      filePath,
+      savedFilePath,
+      rowId,
+      jobId,
       openUrl: {
         data: signedUrlData,
         error: signedUrlError,
@@ -791,26 +836,30 @@ async function buildDiagnosticFileFromRow(file) {
       },
     });
 
-    if (signedUrlError && downloadUrlError) {
-      throw signedUrlError;
+    if (!signedUrlError || !downloadUrlError) {
+      return {
+        url: signedUrlData?.signedUrl || downloadUrlData?.signedUrl || "",
+        downloadUrl: downloadUrlData?.signedUrl || signedUrlData?.signedUrl || "",
+        error: null,
+      };
     }
 
-    return {
-      ...diagnosticFile,
-      url: signedUrlData?.signedUrl || downloadUrlData?.signedUrl || "",
-      downloadUrl: downloadUrlData?.signedUrl || signedUrlData?.signedUrl || "",
-    };
-  } catch (error) {
-    console.warn("[IronProof diagnostics] signed URL unavailable; rendering diagnostic row without download link", {
-      table: "diagnostic_files",
-      rowId: file.id,
-      jobId: file.job_id,
-      storedFilePath: file.file_path,
-      objectPath,
-      error,
+    lastError = signedUrlError || downloadUrlError;
+    console.warn("[IronProof diagnostics] signed URL attempt failed", {
+      bucketName,
+      filePath,
+      savedFilePath,
+      rowId,
+      jobId,
+      error: lastError,
     });
-    return diagnosticFile;
   }
+
+  return {
+    url: "",
+    downloadUrl: "",
+    error: lastError || new Error("Supabase did not return a signed URL for the diagnostic file."),
+  };
 }
 
 function normalizeStorageObjectPath(filePath, bucketName) {
