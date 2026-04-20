@@ -669,35 +669,7 @@ async function loadDiagnosticFilesForJobs(jobIds) {
 
   const files = await Promise.all(
     data.map(async (file) => {
-      try {
-        const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
-          .from("diagnostic-files")
-          .createSignedUrl(file.file_path, 60 * 60);
-
-        if (signedUrlError) {
-          throw signedUrlError;
-        }
-
-        return {
-          id: file.id,
-          jobId: file.job_id,
-          uploadedBy: file.uploaded_by,
-          fileName: file.file_name,
-          filePath: file.file_path,
-          fileType: file.file_type,
-          createdAt: file.created_at,
-          url: signedUrlData.signedUrl,
-        };
-      } catch (error) {
-        console.warn("[IronProof diagnostics] skipping missing or unavailable storage file", {
-          table: "diagnostic_files",
-          rowId: file.id,
-          jobId: file.job_id,
-          filePath: file.file_path,
-          error,
-        });
-        return null;
-      }
+      return buildDiagnosticFileFromRow(file);
     }),
   );
 
@@ -705,6 +677,69 @@ async function loadDiagnosticFilesForJobs(jobIds) {
     const existingFiles = diagnosticFilesByJobId.get(file.jobId) || [];
     diagnosticFilesByJobId.set(file.jobId, [...existingFiles, file]);
   });
+}
+
+async function refreshDiagnosticFilesForJob(jobId) {
+  const savedJobId = String(jobId);
+  const { data, error } = await supabaseClient
+    .from("diagnostic_files")
+    .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
+    .eq("job_id", savedJobId)
+    .order("created_at", { ascending: true });
+
+  console.log("[IronProof diagnostics] query result for current job", {
+    jobId: savedJobId,
+    data,
+    error,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const files = await Promise.all(data.map((file) => buildDiagnosticFileFromRow(file)));
+  const availableFiles = files.filter(Boolean);
+
+  diagnosticFilesByJobId.set(savedJobId, availableFiles);
+  jobs = jobs.map((job) => (job.id === savedJobId ? { ...job, diagnosticFiles: availableFiles } : job));
+
+  if (activeJobId === savedJobId) {
+    renderDetail();
+  }
+
+  return availableFiles;
+}
+
+async function buildDiagnosticFileFromRow(file) {
+  try {
+    const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+      .from("diagnostic-files")
+      .createSignedUrl(file.file_path, 60 * 60);
+
+    if (signedUrlError) {
+      throw signedUrlError;
+    }
+
+    return {
+      id: file.id,
+      jobId: file.job_id,
+      uploadedBy: file.uploaded_by,
+      fileName: file.file_name,
+      filePath: file.file_path,
+      fileType: file.file_type,
+      createdAt: file.created_at,
+      url: signedUrlData.signedUrl,
+    };
+  } catch (error) {
+    console.warn("[IronProof diagnostics] skipping missing or unavailable storage file", {
+      table: "diagnostic_files",
+      rowId: file.id,
+      jobId: file.job_id,
+      filePath: file.file_path,
+      error,
+    });
+    return null;
+  }
 }
 
 async function uploadStagedPhotos(jobId, photosToUpload = stagedPhotos) {
@@ -803,12 +838,19 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
   const savedJobId = String(jobId);
   const uploadedBy = String(currentUser.id);
   const filePath = createDiagnosticFilePath(savedJobId, file.name);
-  const { error: uploadError } = await supabaseClient.storage
+  const { data: uploadData, error: uploadError } = await supabaseClient.storage
     .from("diagnostic-files")
     .upload(filePath, file, {
       contentType: file.type || "application/octet-stream",
       upsert: false,
     });
+  console.log("[IronProof diagnostics] storage upload result", {
+    jobId: savedJobId,
+    fileName: file.name,
+    filePath,
+    data: uploadData,
+    error: uploadError,
+  });
 
   if (uploadError) {
     showDiagnosticStatus(`Diagnostic upload failed: ${uploadError.message}`);
@@ -826,18 +868,29 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
   console.log("[IronProof diagnostics] insert payload", insertPayload);
 
   logSupabaseMutationStart("diagnostic_files", "insert", insertPayload);
-  const { error: insertError } = await supabaseClient.from("diagnostic_files").insert(insertPayload);
+  const { data: insertedDiagnosticFile, error: insertError } = await supabaseClient
+    .from("diagnostic_files")
+    .insert(insertPayload)
+    .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
+    .single();
   logSupabaseMutationResult("diagnostic_files", "insert", insertPayload, {
-    data: null,
+    data: insertedDiagnosticFile,
+    error: insertError,
+  });
+  console.log("[IronProof diagnostics] insert result", {
+    jobId: savedJobId,
+    data: insertedDiagnosticFile,
     error: insertError,
   });
 
   if (insertError) {
     await supabaseClient.storage.from("diagnostic-files").remove([filePath]);
     showDiagnosticStatus(`Diagnostic metadata save failed: ${insertError.message}`);
+    alert(`Diagnostic metadata save failed: ${insertError.message}`);
     throw insertError;
   }
 
+  await refreshDiagnosticFilesForJob(savedJobId);
   showDiagnosticStatus(`Uploaded ${file.name}.`);
 }
 
