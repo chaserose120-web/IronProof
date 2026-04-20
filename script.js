@@ -1223,6 +1223,9 @@ function renderDetail() {
   detail.querySelectorAll("[data-diagnostic-id]").forEach((button) => {
     button.addEventListener("click", () => deleteDiagnosticFile(button.dataset.diagnosticId));
   });
+  detail.querySelectorAll("[data-diagnostic-download-id]").forEach((button) => {
+    button.addEventListener("click", () => downloadDiagnosticFile(button.dataset.diagnosticDownloadId));
+  });
   detail.querySelectorAll("[data-member-role]").forEach((select) => {
     select.addEventListener("change", () => updateCrewMemberRole(select.dataset.memberRole, select.value));
   });
@@ -1410,6 +1413,55 @@ async function deleteDiagnosticFile(diagnosticId) {
     });
     showDiagnosticStatus(`Diagnostic delete failed: ${error.message}`);
     alert(`Diagnostic delete failed: ${error.message}`);
+  }
+}
+
+async function downloadDiagnosticFile(diagnosticId) {
+  const job = getJob(activeJobId);
+  const file = job?.diagnosticFiles.find((savedFile) => savedFile.id === diagnosticId);
+
+  if (!file) {
+    return;
+  }
+
+  showDiagnosticStatus(`Preparing ${file.fileName} download...`);
+
+  try {
+    const bucketName = "diagnostic-files";
+    const savedFilePath = String(file.filePath || "");
+    const signedUrls = await createDiagnosticSignedUrls({
+      bucketName,
+      savedFilePath,
+      normalizedFilePath: normalizeStorageObjectPath(savedFilePath, bucketName),
+      fileName: file.fileName,
+      rowId: file.id,
+      jobId: file.jobId,
+    });
+    const downloadUrl = signedUrls.downloadUrl || signedUrls.url;
+
+    if (!downloadUrl) {
+      throw signedUrls.error || new Error("Supabase did not return a diagnostic file download URL.");
+    }
+
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = file.fileName || "diagnostic-file";
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    showDiagnosticStatus(`Download started for ${file.fileName}.`);
+  } catch (error) {
+    console.warn("[IronProof diagnostics] download failed", {
+      bucketName: "diagnostic-files",
+      rowId: file.id,
+      jobId: file.jobId,
+      filePath: file.filePath,
+      error,
+    });
+    showDiagnosticStatus(`Diagnostic download failed: ${error.message}`);
+    alert(`Diagnostic download failed: ${error.message}`);
   }
 }
 
@@ -1910,9 +1962,10 @@ function renderDiagnosticFiles(job) {
           (file) => `
             <div class="diagnostic-item">
               <div>
-                ${renderDiagnosticFileLink(file)}
+                <span>${escapeHtml(file.fileName)}</span>
                 <span>${escapeHtml(file.fileType || "Other")}</span>
               </div>
+              <button class="button secondary compact-button" type="button" data-diagnostic-download-id="${file.id}">Download</button>
               ${
                 canManageCrewJob(job) || file.uploadedBy === currentUser?.id
                   ? `<button class="button danger compact-button" type="button" data-diagnostic-id="${file.id}">Delete</button>`
@@ -1923,29 +1976,6 @@ function renderDiagnosticFiles(job) {
         )
         .join("")}
     </div>
-  `;
-}
-
-function renderDiagnosticFileLink(file) {
-  if (!file.url && !file.downloadUrl) {
-    return `
-      <span>${escapeHtml(file.fileName)}</span>
-      <span>Link unavailable</span>
-    `;
-  }
-
-  return `
-    <span>${escapeHtml(file.fileName)}</span>
-    ${
-      file.url
-        ? `<a href="${file.url}" target="_blank" rel="noopener">Open</a>`
-        : ""
-    }
-    ${
-      file.downloadUrl
-        ? `<a href="${file.downloadUrl}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">Download</a>`
-        : ""
-    }
   `;
 }
 
