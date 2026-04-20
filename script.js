@@ -1405,21 +1405,33 @@ async function downloadDiagnosticFile(diagnosticId) {
   try {
     const bucketName = "diagnostic-files";
     const savedFilePath = String(file.filePath || "");
-    const signedUrls = await createDiagnosticSignedUrls({
+
+    if (!savedFilePath) {
+      throw new Error("Diagnostic file_path is missing from the saved diagnostic_files row.");
+    }
+
+    const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
+      .from(bucketName)
+      .createSignedUrl(savedFilePath, 60 * 60, {
+        download: file.fileName || true,
+      });
+
+    console.log("[IronProof diagnostics] download signed URL result", {
       bucketName,
-      savedFilePath,
+      filePath: savedFilePath,
       fileName: file.fileName,
       rowId: file.id,
       jobId: file.jobId,
+      data: signedUrlData,
+      error: signedUrlError,
     });
-    const downloadUrl = signedUrls.downloadUrl || signedUrls.url;
 
-    if (!downloadUrl) {
-      throw signedUrls.error || new Error("Supabase did not return a diagnostic file download URL.");
+    if (signedUrlError || !signedUrlData?.signedUrl) {
+      throw signedUrlError || new Error("Supabase did not return a diagnostic file download URL.");
     }
 
     const link = document.createElement("a");
-    link.href = downloadUrl;
+    link.href = signedUrlData.signedUrl;
     link.download = file.fileName || "diagnostic-file";
     link.target = "_blank";
     link.rel = "noopener";
@@ -1433,7 +1445,7 @@ async function downloadDiagnosticFile(diagnosticId) {
       rowId: file.id,
       jobId: file.jobId,
       filePath: String(file.filePath || ""),
-      displayFileName: file.fileName,
+      fileName: file.fileName,
       error,
     });
     showDiagnosticStatus(`Diagnostic download failed: ${error.message}`);
