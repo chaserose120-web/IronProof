@@ -756,6 +756,7 @@ async function refreshDiagnosticFilesForJob(jobId) {
 }
 
 async function buildDiagnosticFileFromRow(file) {
+  const objectPath = normalizeStorageObjectPath(file.file_path, "diagnostic-files");
   const diagnosticFile = {
     id: file.id,
     jobId: file.job_id,
@@ -765,39 +766,62 @@ async function buildDiagnosticFileFromRow(file) {
     fileType: file.file_type,
     createdAt: file.created_at,
     url: "",
+    downloadUrl: "",
   };
 
   try {
-    const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
-      .from("diagnostic-files")
-      .createSignedUrl(file.file_path, 60 * 60);
+    const storageBucket = supabaseClient.storage.from("diagnostic-files");
+    const { data: signedUrlData, error: signedUrlError } = await storageBucket.createSignedUrl(objectPath, 60 * 60);
+    const { data: downloadUrlData, error: downloadUrlError } = await storageBucket.createSignedUrl(objectPath, 60 * 60, {
+      download: file.file_name || true,
+    });
 
     console.log("[IronProof diagnostics] signed URL generation result", {
       rowId: file.id,
       jobId: file.job_id,
-      filePath: file.file_path,
-      data: signedUrlData,
-      error: signedUrlError,
+      storedFilePath: file.file_path,
+      objectPath,
+      openUrl: {
+        data: signedUrlData,
+        error: signedUrlError,
+      },
+      downloadUrl: {
+        data: downloadUrlData,
+        error: downloadUrlError,
+      },
     });
 
-    if (signedUrlError) {
+    if (signedUrlError && downloadUrlError) {
       throw signedUrlError;
     }
 
     return {
       ...diagnosticFile,
-      url: signedUrlData.signedUrl,
+      url: signedUrlData?.signedUrl || downloadUrlData?.signedUrl || "",
+      downloadUrl: downloadUrlData?.signedUrl || signedUrlData?.signedUrl || "",
     };
   } catch (error) {
     console.warn("[IronProof diagnostics] signed URL unavailable; rendering diagnostic row without download link", {
       table: "diagnostic_files",
       rowId: file.id,
       jobId: file.job_id,
-      filePath: file.file_path,
+      storedFilePath: file.file_path,
+      objectPath,
       error,
     });
     return diagnosticFile;
   }
+}
+
+function normalizeStorageObjectPath(filePath, bucketName) {
+  const trimmedPath = String(filePath || "").replace(/^\/+/, "");
+  const bucketPrefix = `${bucketName}/`;
+
+  if (trimmedPath.startsWith(bucketPrefix)) {
+    return trimmedPath.slice(bucketPrefix.length);
+  }
+
+  return trimmedPath;
 }
 
 async function uploadStagedPhotos(jobId, photosToUpload = stagedPhotos) {
@@ -1854,14 +1878,25 @@ function renderDiagnosticFiles(job) {
 }
 
 function renderDiagnosticFileLink(file) {
-  if (!file.url) {
-    return `<span>${escapeHtml(file.fileName)}</span>`;
+  if (!file.url && !file.downloadUrl) {
+    return `
+      <span>${escapeHtml(file.fileName)}</span>
+      <span>Link unavailable</span>
+    `;
   }
 
   return `
-    <a href="${file.url}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">
-      ${escapeHtml(file.fileName)}
-    </a>
+    <span>${escapeHtml(file.fileName)}</span>
+    ${
+      file.url
+        ? `<a href="${file.url}" target="_blank" rel="noopener">Open</a>`
+        : ""
+    }
+    ${
+      file.downloadUrl
+        ? `<a href="${file.downloadUrl}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">Download</a>`
+        : ""
+    }
   `;
 }
 
