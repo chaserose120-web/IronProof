@@ -55,6 +55,7 @@ setDefaultDate();
 updateJobTypeFields("Heavy");
 render();
 initializeAuth();
+registerServiceWorker();
 
 authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -2172,6 +2173,18 @@ async function setTheme(theme) {
   if (error) {
     setAuthMessage(`Theme save failed: ${error.message}`);
   }
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.warn("[IronProof PWA] service worker registration failed", error);
+    });
+  });
 }
 
 function escapeHtml(value) {

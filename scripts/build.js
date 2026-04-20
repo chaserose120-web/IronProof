@@ -3,7 +3,8 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const dist = path.join(root, "dist");
-const requiredFiles = ["index.html", "styles.css", "script.js"];
+const requiredFiles = ["index.html", "styles.css", "script.js", "manifest.webmanifest", "sw.js", "offline.html"];
+const requiredDirectories = ["icons"];
 const { SUPABASE_URL, SUPABASE_ANON_KEY } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -16,6 +17,10 @@ fs.mkdirSync(dist, { recursive: true });
 
 for (const file of requiredFiles) {
   fs.copyFileSync(path.join(root, file), path.join(dist, file));
+}
+
+for (const directory of requiredDirectories) {
+  fs.cpSync(path.join(root, directory), path.join(dist, directory), { recursive: true });
 }
 
 const config = `window.IRONPROOF_SUPABASE = {

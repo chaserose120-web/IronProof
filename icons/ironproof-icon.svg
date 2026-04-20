@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">IronProofService icon</title>
+  <desc id="desc">A rugged red and black IronProofService app icon.</desc>
+  <rect width="512" height="512" rx="112" fill="#15130f"/>
+  <path d="M86 113h340v286H86z" fill="#231f1b"/>
+  <path d="M118 145h276v222H118z" fill="#090807"/>
+  <path d="M149 176h214v34H149zM149 237h164v34H149zM149 298h214v34H149z" fill="#f7f4ed"/>
+  <path d="M393 96 416 119 119 416 96 393z" fill="#ff3b30"/>
+  <path d="M324 94h56v56h-56zM132 362h56v56h-56z" fill="#ffca05"/>
+</svg>

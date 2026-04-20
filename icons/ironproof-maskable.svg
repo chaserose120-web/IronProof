@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">IronProofService maskable icon</title>
+  <desc id="desc">A maskable IronProofService app icon with safe padding.</desc>
+  <rect width="512" height="512" fill="#15130f"/>
+  <circle cx="256" cy="256" r="206" fill="#090807"/>
+  <path d="M156 154h200v204H156z" fill="#231f1b"/>
+  <path d="M190 188h132v30H190zM190 242h104v30H190zM190 296h132v30H190z" fill="#f7f4ed"/>
+  <path d="M354 136 376 158 158 376 136 354z" fill="#ff3b30"/>
+  <path d="M304 132h48v48h-48zM160 332h48v48h-48z" fill="#ffca05"/>
+</svg>
