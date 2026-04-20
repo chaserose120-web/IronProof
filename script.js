@@ -766,9 +766,17 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
     throw error;
   }
 
+  if (!currentUser?.id) {
+    const error = new Error("Cannot upload diagnostic file because the authenticated user id is missing.");
+    showDiagnosticStatus(error.message);
+    throw error;
+  }
+
   showDiagnosticStatus(`Uploading ${file.name}...`);
 
-  const filePath = createDiagnosticFilePath(jobId, file.name);
+  const savedJobId = String(jobId);
+  const uploadedBy = String(currentUser.id);
+  const filePath = createDiagnosticFilePath(savedJobId, file.name);
   const { error: uploadError } = await supabaseClient.storage
     .from("diagnostic-files")
     .upload(filePath, file, {
@@ -781,13 +789,17 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
     throw uploadError;
   }
 
-  const { error: insertError } = await supabaseClient.from("diagnostic_files").insert({
-    job_id: jobId,
-    uploaded_by: currentUser.id,
+  const insertPayload = {
+    job_id: savedJobId,
+    uploaded_by: uploadedBy,
     file_name: file.name,
     file_path: filePath,
     file_type: fileType || "Other",
-  });
+  };
+
+  console.log("[IronProof diagnostics] insert payload", insertPayload);
+
+  const { error: insertError } = await supabaseClient.from("diagnostic_files").insert(insertPayload);
 
   if (insertError) {
     await supabaseClient.storage.from("diagnostic-files").remove([filePath]);
