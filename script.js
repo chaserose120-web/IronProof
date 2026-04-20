@@ -446,7 +446,9 @@ async function loadCrewIdsForCurrentUser() {
 }
 
 async function createJob(payload) {
+  logSupabaseMutationStart("jobs", "insert", payload);
   const { data, error } = await supabaseClient.from("jobs").insert(payload).select().single();
+  logSupabaseMutationResult("jobs", "insert", payload, { data, error });
 
   if (error) {
     throw error;
@@ -456,12 +458,14 @@ async function createJob(payload) {
 }
 
 async function updateJob(jobId, payload) {
+  logSupabaseMutationStart("jobs", "update", payload);
   const { data, error } = await supabaseClient
     .from("jobs")
     .update(payload)
     .eq("id", jobId)
     .select()
     .single();
+  logSupabaseMutationResult("jobs", "update", payload, { data, error });
 
   if (error) {
     throw error;
@@ -799,7 +803,12 @@ async function uploadDiagnosticFile(jobId, file, fileType) {
 
   console.log("[IronProof diagnostics] insert payload", insertPayload);
 
+  logSupabaseMutationStart("diagnostic_files", "insert", insertPayload);
   const { error: insertError } = await supabaseClient.from("diagnostic_files").insert(insertPayload);
+  logSupabaseMutationResult("diagnostic_files", "insert", insertPayload, {
+    data: null,
+    error: insertError,
+  });
 
   if (insertError) {
     await supabaseClient.storage.from("diagnostic-files").remove([filePath]);
@@ -1218,11 +1227,13 @@ async function createCrewForJob(jobId) {
       join_code: joinCode,
       created_by: currentUser.id,
     };
+    logSupabaseMutationStart("job_crews", "insert", crewPayload);
     const { data: createdCrew, error } = await supabaseClient
       .from("job_crews")
       .insert(crewPayload)
       .select("id,job_id,name,join_code,created_by,created_at")
       .single();
+    logSupabaseMutationResult("job_crews", "insert", crewPayload, { data: createdCrew, error });
 
     if (error) {
       throw error;
@@ -1265,12 +1276,15 @@ async function ensureCreatedCrewHasJoinCode(createdCrew, jobId, joinCode) {
     throw new Error("Crew was created, but IronProof could not reload it to confirm the join code.");
   }
 
+  const repairPayload = { join_code: joinCode };
+  logSupabaseMutationStart("job_crews", "update", repairPayload);
   const { data: repairedCrew, error: repairError } = await supabaseClient
     .from("job_crews")
-    .update({ join_code: joinCode })
+    .update(repairPayload)
     .eq("id", crewId)
     .select("id,job_id,name,join_code,created_by,created_at")
     .single();
+  logSupabaseMutationResult("job_crews", "update", repairPayload, { data: repairedCrew, error: repairError });
 
   if (repairError) {
     throw repairError;
@@ -1359,10 +1373,16 @@ async function updateCrewMemberRole(memberId, role) {
   showVisibilityMessage("Updating crew member role...");
 
   try {
+    const rolePayload = { role: nextRole };
+    logSupabaseMutationStart("job_crew_members", "update", rolePayload);
     const { error } = await supabaseClient
       .from("job_crew_members")
-      .update({ role: nextRole })
+      .update(rolePayload)
       .eq("id", memberId);
+    logSupabaseMutationResult("job_crew_members", "update", rolePayload, {
+      data: null,
+      error,
+    });
 
     if (error) {
       throw error;
@@ -1504,6 +1524,31 @@ function createJobCrewJoinCode() {
 
   const suffix = [...randomValues].map((value) => alphabet[value % alphabet.length]).join("");
   return `CREW-${suffix}`;
+}
+
+function logSupabaseMutationStart(table, operation, payload) {
+  console.log("[IronProof Supabase mutation] before", {
+    table,
+    operation,
+    payload,
+  });
+}
+
+function logSupabaseMutationResult(table, operation, payload, result) {
+  const details = {
+    table,
+    operation,
+    payload,
+    data: result.data,
+    error: result.error,
+  };
+
+  if (result.error) {
+    console.error("[IronProof Supabase mutation] after", details);
+    return;
+  }
+
+  console.log("[IronProof Supabase mutation] after", details);
 }
 
 function revokePhotoPreviews() {
