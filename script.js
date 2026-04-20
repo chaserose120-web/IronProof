@@ -657,11 +657,21 @@ async function loadDiagnosticFilesForJobs(jobIds) {
     return;
   }
 
+  console.log("[IronProof diagnostics] loading diagnostic_files for jobs", {
+    jobIds,
+  });
+
   const { data, error } = await supabaseClient
     .from("diagnostic_files")
     .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
     .in("job_id", jobIds)
     .order("created_at", { ascending: true });
+
+  console.log("[IronProof diagnostics] diagnostic_files query result", {
+    jobIds,
+    data,
+    error,
+  });
 
   if (error) {
     throw error;
@@ -677,10 +687,18 @@ async function loadDiagnosticFilesForJobs(jobIds) {
     const existingFiles = diagnosticFilesByJobId.get(file.jobId) || [];
     diagnosticFilesByJobId.set(file.jobId, [...existingFiles, file]);
   });
+
+  console.log("[IronProof diagnostics] final diagnostics by job", {
+    diagnosticsByJob: [...diagnosticFilesByJobId.entries()],
+  });
 }
 
 async function refreshDiagnosticFilesForJob(jobId) {
   const savedJobId = String(jobId);
+  console.log("[IronProof diagnostics] current job id for diagnostic_files query", {
+    jobId: savedJobId,
+  });
+
   const { data, error } = await supabaseClient
     .from("diagnostic_files")
     .select("id,job_id,uploaded_by,file_name,file_path,file_type,created_at")
@@ -703,6 +721,11 @@ async function refreshDiagnosticFilesForJob(jobId) {
   diagnosticFilesByJobId.set(savedJobId, availableFiles);
   jobs = jobs.map((job) => (job.id === savedJobId ? { ...job, diagnosticFiles: availableFiles } : job));
 
+  console.log("[IronProof diagnostics] final rendered diagnostics array", {
+    jobId: savedJobId,
+    diagnostics: availableFiles,
+  });
+
   if (activeJobId === savedJobId) {
     renderDetail();
   }
@@ -711,34 +734,47 @@ async function refreshDiagnosticFilesForJob(jobId) {
 }
 
 async function buildDiagnosticFileFromRow(file) {
+  const diagnosticFile = {
+    id: file.id,
+    jobId: file.job_id,
+    uploadedBy: file.uploaded_by,
+    fileName: file.file_name,
+    filePath: file.file_path,
+    fileType: file.file_type,
+    createdAt: file.created_at,
+    url: "",
+  };
+
   try {
     const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
       .from("diagnostic-files")
       .createSignedUrl(file.file_path, 60 * 60);
+
+    console.log("[IronProof diagnostics] signed URL generation result", {
+      rowId: file.id,
+      jobId: file.job_id,
+      filePath: file.file_path,
+      data: signedUrlData,
+      error: signedUrlError,
+    });
 
     if (signedUrlError) {
       throw signedUrlError;
     }
 
     return {
-      id: file.id,
-      jobId: file.job_id,
-      uploadedBy: file.uploaded_by,
-      fileName: file.file_name,
-      filePath: file.file_path,
-      fileType: file.file_type,
-      createdAt: file.created_at,
+      ...diagnosticFile,
       url: signedUrlData.signedUrl,
     };
   } catch (error) {
-    console.warn("[IronProof diagnostics] skipping missing or unavailable storage file", {
+    console.warn("[IronProof diagnostics] signed URL unavailable; rendering diagnostic row without download link", {
       table: "diagnostic_files",
       rowId: file.id,
       jobId: file.job_id,
       filePath: file.file_path,
       error,
     });
-    return null;
+    return diagnosticFile;
   }
 }
 
@@ -1766,6 +1802,11 @@ function renderDiagnosticFiles(job) {
     return "<p>No diagnostic files saved on this job yet.</p>";
   }
 
+  console.log("[IronProof diagnostics] final rendered diagnostics array", {
+    jobId: job.id,
+    diagnostics: job.diagnosticFiles,
+  });
+
   return `
     <div class="diagnostic-list">
       ${job.diagnosticFiles
@@ -1773,9 +1814,7 @@ function renderDiagnosticFiles(job) {
           (file) => `
             <div class="diagnostic-item">
               <div>
-                <a href="${file.url}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">
-                  ${escapeHtml(file.fileName)}
-                </a>
+                ${renderDiagnosticFileLink(file)}
                 <span>${escapeHtml(file.fileType || "Other")}</span>
               </div>
               ${
@@ -1788,6 +1827,18 @@ function renderDiagnosticFiles(job) {
         )
         .join("")}
     </div>
+  `;
+}
+
+function renderDiagnosticFileLink(file) {
+  if (!file.url) {
+    return `<span>${escapeHtml(file.fileName)}</span>`;
+  }
+
+  return `
+    <a href="${file.url}" target="_blank" rel="noopener" download="${escapeHtml(file.fileName)}">
+      ${escapeHtml(file.fileName)}
+    </a>
   `;
 }
 
