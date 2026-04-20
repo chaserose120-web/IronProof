@@ -1400,12 +1400,22 @@ async function downloadDiagnosticFile(diagnosticId) {
     return;
   }
 
-  showDiagnosticStatus(`Preparing ${file.fileName} download...`);
+  const bucketName = "diagnostic-files";
+  const savedFilePath = String(file.file_path || file.filePath || "");
+  const downloadFileName = file.file_name || file.fileName || "diagnostic-file";
+  const diagnosticJobId = file.job_id || file.jobId || activeJobId;
+
+  console.log("[IronProof diagnostics] download file object", {
+    file,
+    bucketName,
+    filePath: savedFilePath,
+    fileName: downloadFileName,
+    jobId: diagnosticJobId,
+  });
+
+  showDiagnosticStatus(`Preparing ${downloadFileName} download...`);
 
   try {
-    const bucketName = "diagnostic-files";
-    const savedFilePath = String(file.filePath || "");
-
     if (!savedFilePath) {
       throw new Error("Diagnostic file_path is missing from the saved diagnostic_files row.");
     }
@@ -1413,15 +1423,15 @@ async function downloadDiagnosticFile(diagnosticId) {
     const { data: signedUrlData, error: signedUrlError } = await supabaseClient.storage
       .from(bucketName)
       .createSignedUrl(savedFilePath, 60 * 60, {
-        download: file.fileName || true,
+        download: downloadFileName,
       });
 
     console.log("[IronProof diagnostics] download signed URL result", {
       bucketName,
       filePath: savedFilePath,
-      fileName: file.fileName,
+      fileName: downloadFileName,
       rowId: file.id,
-      jobId: file.jobId,
+      jobId: diagnosticJobId,
       data: signedUrlData,
       error: signedUrlError,
     });
@@ -1432,20 +1442,20 @@ async function downloadDiagnosticFile(diagnosticId) {
 
     const link = document.createElement("a");
     link.href = signedUrlData.signedUrl;
-    link.download = file.fileName || "diagnostic-file";
+    link.download = downloadFileName;
     link.target = "_blank";
     link.rel = "noopener";
     document.body.append(link);
     link.click();
     link.remove();
-    showDiagnosticStatus(`Download started for ${file.fileName}.`);
+    showDiagnosticStatus(`Download started for ${downloadFileName}.`);
   } catch (error) {
     console.warn("[IronProof diagnostics] download failed", {
-      bucketName: "diagnostic-files",
+      bucketName,
       rowId: file.id,
-      jobId: file.jobId,
-      filePath: String(file.filePath || ""),
-      fileName: file.fileName,
+      jobId: diagnosticJobId,
+      filePath: savedFilePath,
+      fileName: downloadFileName,
       error,
     });
     showDiagnosticStatus(`Diagnostic download failed: ${error.message}`);
