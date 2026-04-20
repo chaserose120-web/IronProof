@@ -1,14 +1,16 @@
-const CACHE_NAME = "ironproofservice-v1";
+const CACHE_NAME = "ironproofservice-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/script.js",
   "/supabase-config.js",
-  "/manifest.webmanifest",
   "/offline.html",
-  "/icons/ironproof-icon.svg",
-  "/icons/ironproof-maskable.svg",
+];
+const EXCLUDED_PATH_PREFIXES = [
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/icons/",
 ];
 
 self.addEventListener("install", (event) => {
@@ -37,14 +39,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(() => caches.match("/offline.html")),
-    );
+  if (url.origin !== self.location.origin) {
     return;
   }
 
-  if (url.origin !== self.location.origin) {
+  if (isExcludedRequest(url)) {
+    return;
+  }
+
+  if (isHtmlNavigation(request)) {
+    event.respondWith(
+      fetch(request).catch(() => caches.match("/offline.html")),
+    );
     return;
   }
 
@@ -64,3 +70,11 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+function isHtmlNavigation(request) {
+  return request.mode === "navigate" && request.headers.get("accept")?.includes("text/html");
+}
+
+function isExcludedRequest(url) {
+  return EXCLUDED_PATH_PREFIXES.some((pathPrefix) => url.pathname.startsWith(pathPrefix));
+}
