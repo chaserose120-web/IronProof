@@ -1236,3 +1236,67 @@ body.dark .status-pill.Waiting {
     grid-template-columns: 1fr;
   }
 }
+
+.app-footer {
+  width: min(1220px, calc(100% - 32px));
+  margin: 18px auto 32px;
+  text-align: center;
+}
+
+.app-footer-link {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.app-footer-link:hover {
+  color: var(--ink);
+}
+
+.support-panel {
+  margin-top: 28px;
+  padding: clamp(20px, 3vw, 30px);
+}
+
+.support-panel p {
+  margin: 0;
+}
+
+.support-contact-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--ink);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.support-contact-link:hover {
+  color: var(--rust);
+}
+
+.support-note {
+  margin-top: 12px !important;
+  max-width: 760px;
+  color: var(--muted);
+}
+
+body.dark .support-contact-link {
+  color: #ffffff;
+}
+
+body.dark .support-contact-link:hover {
+  color: #ff6b5f;
+}
+
+@media (max-width: 720px) {
+  .app-footer {
+    margin: 16px auto 26px;
+  }
+
+  .support-panel {
+    margin-top: 24px;
+  }
+}

@@ -444,8 +444,31 @@
         </div>
 
         <article class="job-detail hidden" id="jobDetail"></article>
-      </section>
-    </main>
+  </section>
+
+  <section class="panel support-panel hidden" id="supportPanel" aria-labelledby="supportTitle">
+    <div class="panel-heading compact">
+      <p class="eyebrow">Support</p>
+      <h2 id="supportTitle">Support</h2>
+      <p>Need help, found a bug, or have feedback? Contact IronProof support below.</p>
+    </div>
+    <p>
+      <a
+        class="support-contact-link"
+        href="mailto:chaserose@ironproofservice.com?subject=IronProof%20Support%20Request"
+      >
+        chaserose@ironproofservice.com
+      </a>
+    </p>
+    <p class="support-note">
+      Please include relevant details, screenshots, and job information when reporting an issue.
+    </p>
+  </section>
+</main>
+
+<footer class="app-footer" aria-label="Footer support">
+  <a class="app-footer-link" href="#supportPanel" id="supportLink">Support</a>
+</footer>
 
     <template id="jobCardTemplate">
       <button class="job-card" type="button">
