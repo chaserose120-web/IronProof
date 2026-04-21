@@ -30,8 +30,6 @@ const jobTypeInputs = document.querySelectorAll("input[name='jobType']");
 const jobTypeFields = document.querySelectorAll("[data-job-type-fields]");
 const visibilityInputs = document.querySelectorAll("input[name='visibilityType']");
 const visibilityMessage = document.querySelector("#visibilityMessage");
-const supportLink = document.querySelector("#supportLink");
-const supportPanel = document.querySelector("#supportPanel");
 
 const supabaseConfig = window.IRONPROOF_SUPABASE || {};
 const supabaseClient =
@@ -121,15 +119,6 @@ themeButtons.forEach((button) => {
   button.addEventListener("click", () => setTheme(button.dataset.theme));
 });
 
-supportLink?.addEventListener("click", (event) => {
-  event.preventDefault();
-  supportPanel?.classList.remove("hidden");
-  supportPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-
-if (window.location.hash === "#supportPanel") {
-  supportPanel?.classList.remove("hidden");
-}
 
 photoModal.addEventListener("click", (event) => {
   if (event.target === photoModal) {
