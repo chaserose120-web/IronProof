@@ -1250,7 +1250,10 @@ body.dark .status-pill.Waiting {
 
 .app-footer-link {
   display: inline-block;
+  border: 0;
+  padding: 0;
   color: var(--muted);
+  background: transparent;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1258,6 +1261,22 @@ body.dark .status-pill.Waiting {
 }
 
 .app-footer-link:hover {
+  color: var(--ink);
+}
+
+.app-footer-email {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  text-align: center;
+}
+
+.app-footer-email a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-footer-email a:hover {
   color: var(--ink);
 }
 

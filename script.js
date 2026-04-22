@@ -30,6 +30,8 @@ const jobTypeInputs = document.querySelectorAll("input[name='jobType']");
 const jobTypeFields = document.querySelectorAll("[data-job-type-fields]");
 const visibilityInputs = document.querySelectorAll("input[name='visibilityType']");
 const visibilityMessage = document.querySelector("#visibilityMessage");
+const supportToggle = document.querySelector("#supportToggle");
+const supportEmail = document.querySelector("#supportEmail");
 
 const supabaseConfig = window.IRONPROOF_SUPABASE || {};
 const supabaseClient =
@@ -115,8 +117,15 @@ logoutButton.addEventListener("click", async () => {
 });
 
 
+
 themeButtons.forEach((button) => {
   button.addEventListener("click", () => setTheme(button.dataset.theme));
+});
+
+supportToggle?.addEventListener("click", () => {
+  const isHidden = supportEmail?.classList.contains("hidden");
+  supportEmail?.classList.toggle("hidden", !isHidden);
+  supportToggle.setAttribute("aria-expanded", String(isHidden));
 });
 
 

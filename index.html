@@ -448,13 +448,12 @@
 </main>
 
 <footer class="app-footer" aria-label="Footer support">
-  <a
-    class="app-footer-link"
-    href="mailto:chaserose@ironproofservice.com?subject=IronProof%20Support%20Request"
-    id="supportLink"
-  >
+  <button class="app-footer-link" type="button" id="supportToggle" aria-expanded="false" aria-controls="supportEmail">
     Support • Suggestions • Questions
-  </a>
+  </button>
+  <p class="app-footer-email hidden" id="supportEmail">
+    <a href="mailto:chaserose@ironproofservice.com">chaserose@ironproofservice.com</a>
+  </p>
 </footer>
 
     <template id="jobCardTemplate">
